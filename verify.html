@@ -40,8 +40,8 @@ const DEATHS = [
   { id: 'rakuseki', name: '落石に あたる',             n: 5,    near: 'ちいさな いしが ころがってきた' },
   { id: 'kinoko',   name: '毒キノコを たべる',         n: 4,    near: 'あやしい キノコと めが あった' },
   { id: 'rakurai',  name: '落雷に うたれる',           n: 3,    near: 'とおくで ゴロゴロと なった',
-    // 全画面の映像（Phase 2 の試作）。impactT：映像のこの秒で直撃（白く暗転）。feet：ピクトグラムの足もと（世界の座標）。scale：大きさ
-    cine: { src: 'media/rakurai.mp4', impactT: 3.3, flash: '#ffffff', feet: [50, 152], scale: 1.3 } },
+    // 全画面の場面（背景は 45-scenes.js がコードで描く）。impactT：この秒で直撃（白く暗転）。feet：ピクトグラムの足もと（世界の座標）。scale：大きさ
+    cine: { scene: 'rakurai', impactT: 3.3, flash: '#ffffff', feet: [50, 152], scale: 1.3 } },
 ];
 DEATHS.forEach(d => { d.weight = 1 + Math.log10(d.n); });
 

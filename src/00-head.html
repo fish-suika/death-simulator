@@ -43,7 +43,6 @@ body{display:flex;align-items:center;justify-content:center}
 @keyframes cfade{from{opacity:0}to{opacity:1}}
 @keyframes cout{from{opacity:1}to{opacity:0}}
 #cineInner{position:absolute;inset:0;transform-origin:50% 78%;will-change:transform}
-#vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
 #cv2{position:absolute;inset:0;width:100%;height:100%}
 #cineFlash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
 
@@ -70,7 +69,7 @@ body{display:flex;align-items:center;justify-content:center}
   <div id="msg"></div>
   <button id="go" class="btn">まわす</button>
   <div id="cine">
-    <div id="cineInner"><video id="vid" muted playsinline preload="auto"></video><canvas id="cv2"></canvas></div>
+    <div id="cineInner"><canvas id="cv2"></canvas></div>
     <div id="cineFlash"></div>
   </div>
   <div id="result">

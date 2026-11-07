@@ -1,13 +1,12 @@
-// ===== 死亡演出：全画面の映像 =====
-// 流れ：止まる(0.3秒・色が抜ける) → 映像に切り替わる → 迫る(ピクトグラムが気づいて慌てる・寄りと揺れ) → 直撃で白く暗転 → 死因カード
-// 映像が読めないときは Phase 1 の簡易演出（寝たひと）で続ける
-const cineEl = $('cine'), vid = $('vid'), cv2 = $('cv2'), ctx2 = cv2.getContext('2d');
+// ===== 死亡演出：全画面の場面（背景は 45-scenes.js がコードで描く）=====
+// 流れ：止まる(0.3秒・色が抜ける) → 全画面の場面に切り替わる → 迫る(ピクトグラムが気づいて慌てる・寄りと揺れ) → 直撃で白く暗転 → 死因カード
+// 場面が用意されていない死に方は Phase 1 の簡易演出（寝たひと）で続ける
+const cineEl = $('cine'), cv2 = $('cv2'), ctx2 = cv2.getContext('2d');
 const cineInner = $('cineInner'), cineFlash = $('cineFlash');
 
 const Cine = {
-  def: null,          // いま読み込んでいる映像の設定（死に方が決まったとき）
-  loadFail: false,
-  pending: false,     // 止まってから映像が始まるまで（色が抜ける間）
+  def: null,          // いまの死に方の場面の設定（死に方が決まったとき）
+  pending: false,     // 止まってから場面が始まるまで（色が抜ける間）
   pendT: 0,
   on: false,          // 映像の再生中
   t: 0,               // 映像の経過秒
@@ -39,26 +38,18 @@ function cineResize() {
   Cine.k = r.width / CFG.worldW * d;
 }
 
-// 回り始めるとき、死に方が決まっていれば映像を先に読み込む（回っている間に間に合わせる）
+// 回り始めるとき、この回の死に方に場面があるかを決めておく
 function cinePrepare() {
-  Cine.def = null; Cine.loadFail = false;
+  Cine.def = null;
   const w = Game.plan && Game.plan.target;
   if (!w || w.kind !== 'death') return;
   const def = DEATHS[w.idx].cine;
-  if (!def) return;
-  Cine.def = def;
-  if (vid.getAttribute('src') !== def.src) {
-    vid.onerror = () => { Cine.loadFail = true; };
-    vid.setAttribute('src', def.src);
-    vid.load();
-  } else {
-    try { vid.currentTime = 0; } catch (_) {}
-  }
+  if (def && Scenes[def.scene]) Cine.def = def;
 }
 
-// 死亡が決まった瞬間。映像で見せられるなら true
+// 死亡が決まった瞬間。全画面の場面で見せられるなら true
 function cineEnter() {
-  if (!Cine.def || Cine.loadFail) return false;
+  if (!Cine.def) return false;
   Cine.pending = true; Cine.pendT = 0; Cine.holdMain = true;
   cv.style.transition = 'filter .3s'; cv.style.filter = 'grayscale(1) brightness(.8)';
   $('msg').style.visibility = 'hidden';
@@ -70,8 +61,6 @@ function cineBegin() {
   cineResize();
   cineFlash.style.opacity = '0';
   cineEl.classList.remove('out'); cineEl.classList.add('show');
-  try { vid.currentTime = 0; } catch (_) {}
-  const p = vid.play(); if (p && p.catch) p.catch(() => {});
   Snd.cineStart(Cine.def.impactT);
 }
 
@@ -79,7 +68,6 @@ function cineImpact() {
   Cine.impacted = true; Cine.afterT = 0;
   cineFlash.style.opacity = '1';
   ctx2.setTransform(1, 0, 0, 1, 0, 0); ctx2.clearRect(0, 0, cv2.width, cv2.height);   // 当たった瞬間、ピクトグラムは見せない
-  try { vid.pause(); } catch (_) {}
   Snd.impact();
   markSeen(Cine.def.id || DEATHS[Game.deathIdx].id);
 }
@@ -89,7 +77,6 @@ function cineSkip() {
   if (!Cine.on || Cine.impacted) return;
   if (!wasSeen(DEATHS[Game.deathIdx].id)) return;
   Cine.t = Cine.def.impactT;
-  try { vid.currentTime = Math.max(0, Cine.def.impactT - 0.1); } catch (_) {}
   Snd.cineCut();
 }
 
@@ -108,18 +95,13 @@ function cineReset() {
   cineFlash.style.opacity = '0';
   cineInner.style.transform = '';
   cv.style.transition = ''; cv.style.filter = '';
-  try { vid.pause(); } catch (_) {}
   Snd.cineCut();
 }
 
 function cineFrame(dt) {
   if (Cine.pending) {
     Cine.pendT += dt;
-    const ready = vid.readyState >= 3;
-    if (Cine.loadFail || Cine.pendT > 2.2) {          // 間に合わない・読めない → 簡易演出
-      Cine.pending = false; Cine.holdMain = false; cv.style.filter = '';
-      fallbackDead();
-    } else if (Cine.pendT >= 0.3 && ready) cineBegin();
+    if (Cine.pendT >= 0.3) cineBegin();
     return;
   }
   if (!Cine.on) return;
@@ -137,8 +119,8 @@ function cineFrame(dt) {
     // ピクトグラム：のんびり立つ → 気づく → 慌てる
     const pose = Cine.t < 0.7 ? 'stand' : (Cine.t < 1.4 ? 'startle' : 'panic');
     const tp = pose === 'stand' ? Cine.t : (pose === 'startle' ? Cine.t - 0.7 : Cine.t - 1.4);
-    ctx2.setTransform(1, 0, 0, 1, 0, 0); ctx2.clearRect(0, 0, cv2.width, cv2.height);
     ctx2.setTransform(Cine.k, 0, 0, Cine.k, 0, 0);
+    Scenes[D.scene](ctx2, Math.min(Cine.t, D.impactT), p);   // 背景（全面を塗る）
     const saved = ctx; ctx = ctx2;
     ctx.save();
     ctx.translate(D.feet[0], D.feet[1]); ctx.scale(D.scale, D.scale);
