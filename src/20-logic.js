@@ -19,10 +19,28 @@ function safeFrac(day, dest) {
   return Math.max(CFG.safeMin, Math.min(CFG.safeMax, base + destOf(dest).safeBonus));
 }
 
+// 図鑑まわり（画面側 65-dex.js が差し替える）。隠し枠（隕石）は、図鑑が 12 種そろうと円盤に出る
+let HIDDEN_ON = false;
+let DEX_HAS = () => false;                       // その死に方が図鑑に載っているか
+const dexOpen = () => DEATHS.filter(d => !d.hidden && !DEX_HAS(d.id)).length;   // 図鑑の空き
+const dexRegular = () => DEATHS.filter(d => !d.hidden).length;                  // 隠し枠をのぞく種類数
+
+// 円盤のマスの重み。図鑑の空きが半分以下になったら、まだ載っていない死に方を少し太くする（最大 3 倍）
+// （まれな死に方ほど出ないので、図鑑の最後が埋まらなくなるのを防ぐ）
+function wheelWeight(i) {
+  const d = DEATHS[i];
+  if (d.hidden || DEX_HAS(d.id)) return d.weight;
+  const got = dexRegular() - dexOpen(), half = dexRegular() / 2;
+  return d.weight * (1 + 2 * Math.max(0, Math.min(1, (got - half) / half)));
+}
+
 // その行き先で出る死に方（番号）。どこでも出る物（any）は どの行き先にも入る
 function destDeaths(dest) {
   const id = destOf(dest).id, out = [];
-  DEATHS.forEach((d, i) => { if (d.dest === id || d.dest === 'any') out.push(i); });
+  DEATHS.forEach((d, i) => {
+    if (d.hidden && !HIDDEN_ON) return;
+    if (d.dest === id || d.dest === 'any') out.push(i);
+  });
   return out;
 }
 
@@ -31,10 +49,10 @@ function buildWheel(day, dest) {
   const p = safeFrac(day, dest);
   const wedges = [{ kind: 'safe', a0: 0, a1: TAU * p }];
   const list = destDeaths(dest);
-  const total = list.reduce((s, i) => s + DEATHS[i].weight, 0);
+  const total = list.reduce((s, i) => s + wheelWeight(i), 0);
   let a = TAU * p;
   list.forEach(i => {
-    const w = TAU * (1 - p) * DEATHS[i].weight / total;
+    const w = TAU * (1 - p) * wheelWeight(i) / total;
     wedges.push({ kind: 'death', idx: i, a0: a, a1: a + w });
     a += w;
   });

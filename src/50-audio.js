@@ -126,5 +126,19 @@ const Snd = (() => {
       tone(190, t + 0.28, 0.22, { type: 'square', gain: 0.14 });
     },
     press() { if (ac) tone(660, now(), 0.06, { type: 'triangle', gain: 0.15 }); },
+    // 初めての死に方：ファンファーレ
+    fanfare() {
+      if (!ac) return;
+      const t = now();
+      [[523, 0], [659, 0.11], [784, 0.22], [1047, 0.36]].forEach(([f, d]) => tone(f, t + d, 0.28, { type: 'square', gain: 0.1 }));
+      [[523, 0.36], [659, 0.36], [784, 0.36]].forEach(([f, d]) => tone(f, t + d, 0.7, { type: 'triangle', gain: 0.12 }));
+    },
+    // 図鑑コンプリート／隕石が現れる：長いファンファーレ
+    grand() {
+      if (!ac) return;
+      const t = now();
+      [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => tone(f, t + i * 0.13, 0.3, { type: 'square', gain: 0.1 }));
+      [523, 659, 784, 1047].forEach(f => tone(f, t + 0.95, 1.1, { type: 'triangle', gain: 0.12 }));
+    },
   };
 })();

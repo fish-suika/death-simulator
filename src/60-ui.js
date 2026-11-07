@@ -30,6 +30,7 @@ function setMsg(text, cls) {
 
 function updateHeader() {
   $('dayNo').textContent = Game.day + '日目';
+  $('dexBtn').textContent = '図鑑 ' + dexGot() + '/' + dexTotal();
   const b = loadBest();
   $('best').textContent = b > 0 ? 'ベスト ' + b + '日目' : '';
 }
@@ -40,7 +41,7 @@ function onPhase(p) {
   const go = $('dests');
   if (p === 'ready') {
     updateHeader();
-    if (Game.day === 1) setMsg('きょうは どこへ 行く？');   // 2日目以降は前の日の一言を残す
+    if (Game.day === 1) setMsg(HIDDEN_ON ? '空に ふしぎな 光が 見える… どこへ 行く？' : 'きょうは どこへ 行く？');   // 2日目以降は前の日の一言を残す
     go.classList.remove('hide');
   } else if (p === 'spin') {
     setMsg('');
@@ -76,12 +77,29 @@ function showCard() {
   const isBest = Game.day > best;
   if (isBest) saveBest(Game.day);
   const D = DEATHS[Game.deathIdx];
+  const r = dexRecord(Game.deathIdx);          // 図鑑に記録（初めてなら NEW）
+  $('rNew').style.display = r.isNew ? 'block' : 'none';
+  const od = $('rOdds');
+  od.className = r.isNew ? 'new' : '';
+  if (r.isNew) {
+    const odds = D.n > 0 ? '年間 ' + oddsText(D) + 'の 死に方' : '日本では 記録のない 死に方';
+    od.innerHTML = '<span class="nb">おめでとうございます！</span><br><span class="nb">' + odds + '</span> <span class="nb">' + starsText(D) + '</span>';
+  } else {
+    od.textContent = starsText(D) + '  ・  ' + r.count + '回目';
+  }
+  const bn = $('rBanner');
+  if (r.complete) { bn.textContent = '図鑑コンプリート！'; bn.style.display = 'block'; }
+  else if (r.unlocked) { bn.textContent = '12種 そろった！ 空に 光が…'; bn.style.display = 'block'; }
+  else bn.style.display = 'none';
+  $('rGame').style.display = (r.complete || r.unlocked) ? 'none' : '';   // カードが長くなるので断り書きは省く（図鑑の下には常にある）
+  if (r.complete || r.unlocked) { Snd.grand(); confetti(r.complete ? 170 : 100, true); }
+  else if (r.isNew) { Snd.fanfare(); confetti(45, true); }
   $('rCause').textContent = D.name;
   $('rStatN').textContent = D.stat;
   $('rStatNote').textContent = D.note;
   $('rPrev').innerHTML = '<i>防ぐには</i>' + D.prevent;
   $('rDays').innerHTML = '<span class="nb">' + Game.day + '日目に</span> <span class="nb">死亡</span>';
-  $('rBest').textContent = isBest && best > 0 ? 'きろく こうしん！' : (best > 0 ? 'ベスト ' + Math.max(best, Game.day) + '日目' : '');
+  $('rBest').textContent = (isBest && best > 0 ? 'きろく こうしん！' : (best > 0 ? 'ベスト ' + Math.max(best, Game.day) + '日目' : '')) + (best > 0 ? '  ・  ' : '') + '図鑑 ' + r.got + '/' + r.total;
   $('msg').style.visibility = 'hidden';
   cv.style.filter = '';
   $('result').classList.add('show');
@@ -105,6 +123,7 @@ function frame(ts) {
   if (Game.phase !== uiPhase) onPhase(Game.phase);
   if (cardTimer > 0) { cardTimer -= dt; if (cardTimer <= 0 && !cardShown) showCard(); }
   cineFrame(dt);
+  confettiFrame(dt);
   updateHeader();
   render(dt);
   requestAnimationFrame(frame);

@@ -48,10 +48,40 @@
     // どの死に方も、どこかの行き先には並ぶ
     const all = new Set();
     DESTS.forEach(d => destDeaths(d.id).forEach(i => all.add(i)));
-    check('全部の死に方がどこかの行き先に出る', all.size === DEATHS.length, all.size + ' / ' + DEATHS.length);
+    check('隠し枠をのぞく 12 種が、どこかの行き先に出る', all.size === dexRegular() && dexRegular() === 12, all.size + ' / ' + dexRegular());
     // データに出典・数字・防ぐには がそろっている
-    const miss = DEATHS.filter(d => !(d.n > 0 && d.stat && d.note && d.prevent && d.name && d.near)).map(d => d.id);
+    const miss = DEATHS.filter(d => !((d.n > 0 || d.hidden) && d.stat && d.note && d.prevent && d.name && d.near)).map(d => d.id);
     check('死に方のデータに数字・出どころ・防ぐには・名前がそろっている', miss.length === 0, miss.join(','));
+  }
+  {
+    // 隠し枠（隕石）：図鑑が 12 種そろうまでは円盤に出ない。そろうとどの行き先にも出る
+    const hid = DEATHS.findIndex(d => d.hidden);
+    const before = DESTS.every(d => !destDeaths(d.id).includes(hid));
+    HIDDEN_ON = true;
+    const after = DESTS.every(d => destDeaths(d.id).includes(hid));
+    const wedge = buildWheel(3, 'sea').slice(1).some(w => w.idx === hid);
+    HIDDEN_ON = false;
+    check('隕石は図鑑が 12 種そろうと円盤に出る（それまでは出ない）', before && after && wedge && hid >= 0);
+  }
+  {
+    // 図鑑の空きが少ないと、まだ載っていない死に方のマスが太くなる（最大 3 倍）。空きが多いうちは変わらない
+    const ids = DEATHS.filter(d => !d.hidden).map(d => d.id);
+    const w0 = i => DEATHS[i].weight;
+    DEX_HAS = () => false;
+    const none = wheelWeight(0) === w0(0);
+    DEX_HAS = id => ids.indexOf(id) < 3;                 // 3 種だけ載っている（半分以下）
+    const few = wheelWeight(10) === w0(10);              // DEATHS の 10 番は 3 種のうちに入らない
+    DEX_HAS = id => ids.indexOf(id) < 11;                // 11 種載っている（空き 1）
+    const last = DEATHS.findIndex(d => ids.indexOf(d.id) === 11);
+    const boosted = wheelWeight(last) > w0(last) * 2.5 && wheelWeight(last) <= w0(last) * 3 + 1e-9 && wheelWeight(0) === w0(0);
+    DEX_HAS = () => false;
+    check('図鑑の空きが少ないと、まだ載っていない死に方のマスが太くなる', none && few && boosted);
+  }
+  {
+    // 「年間 ○人に 1 人」とレア度
+    const mochi = DEATHS.find(d => d.id === 'mochi'), kin = DEATHS.find(d => d.id === 'kinoko');
+    const stars = DEATHS.map(d => d.hidden ? 5 : Math.max(1, Math.min(5, Math.round(5 - Math.log10(d.n) * 1.2))));
+    check('レア度は 1〜5 で、死者が少ない物ほど高い', stars.every(s => s >= 1 && s <= 5) && mochi.n > kin.n);
   }
 
   // --- 止まる位置 ---

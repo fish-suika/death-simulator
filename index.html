@@ -65,16 +65,53 @@ body{display:flex;align-items:center;justify-content:center}
 #rPrev{font-size:3.7cqw;font-weight:bold;line-height:1.5}
 #rPrev i{font-style:normal;background:#1a1a1a;color:#ffcc00;border-radius:1cqw;padding:.3cqw 1.4cqw;margin-right:1.2cqw;font-size:3.2cqw}
 #rBest{font-size:3.4cqw;min-height:4cqw}
-#rGame{font-size:2.8cqw;opacity:.75}
-#retry{width:100%;height:13cqw;font-size:5.6cqw;margin-top:.5cqw;background:#1a1a1a;color:#ffcc00;border-radius:3cqw}
+#rGame{font-size:2.6cqw;opacity:.75}
+#rRow{display:flex;gap:2.5cqw;align-self:stretch;margin-top:.5cqw}
+#retry{flex:1;height:12.5cqw;font-size:5.4cqw;background:#1a1a1a;color:#ffcc00;border-radius:3cqw}
 #retry:active{transform:translateY(.8cqw)}
+#dexOpen2{width:24cqw;height:12.5cqw;font-size:4.6cqw;background:#fff3b0;color:#1a1a1a;border:.9cqw solid #1a1a1a;border-radius:3cqw}
+#rOdds{font-size:3.7cqw;font-weight:bold;line-height:1.5}
+#rOdds.new{color:#1a1a1a;background:#fff;border-radius:1.6cqw;padding:1.2cqw 2.4cqw;border:.6cqw solid #1a1a1a}
+#rNew{position:absolute;top:1.4cqw;right:3cqw;display:none;transform:rotate(10deg);border:.8cqw solid #d9291c;color:#d9291c;
+  font-size:5cqw;font-weight:bold;padding:.2cqw 2cqw;border-radius:1.4cqw;background:#fffbe0;letter-spacing:.3cqw;animation:stamp .35s cubic-bezier(.3,1.8,.5,1) both}
+@keyframes stamp{from{transform:rotate(12deg) scale(2.4);opacity:0}to{transform:rotate(12deg) scale(1);opacity:1}}
+#rBanner{display:none;align-self:stretch;background:#d9291c;color:#fff;font-size:4.6cqw;font-weight:bold;padding:1cqw 0;margin:0 -5cqw;letter-spacing:.3cqw;white-space:nowrap}
+
+/* 図鑑：注意標識のカードが並ぶ */
+#hdr{gap:2cqw}
+#best{flex:1;text-align:right}
+#dexBtn{height:7.4cqw;padding:0 2.6cqw;font-size:3.4cqw;background:#ffcc00;color:#1a1a1a;border-radius:2cqw;white-space:nowrap}
+#dex{position:absolute;inset:0;z-index:50;background:#fbf8ee;display:none;flex-direction:column;pointer-events:auto}
+#dex.show{display:flex;animation:cfade .2s both}
+#dexHead{display:flex;align-items:center;justify-content:space-between;margin:5.5cqw 5cqw 2cqw;padding:0 4cqw;height:11cqw;background:#1a1a1a;color:#ffcc00;border-radius:1.8cqw;font-weight:bold}
+#dexHead b{font-size:6.4cqw}
+#dexClose{height:7.4cqw;padding:0 3cqw;font-size:3.8cqw;background:#ffcc00;color:#1a1a1a;border-radius:2cqw}
+#dexGrid{flex:1;overflow:auto;display:grid;grid-template-columns:repeat(3,1fr);gap:1cqw 2cqw;padding:2cqw 5cqw;align-content:start;touch-action:pan-y}
+.dcard{display:flex;flex-direction:column;align-items:center;cursor:pointer;touch-action:manipulation}
+.dsign{position:relative;width:78%;aspect-ratio:1}
+.dsign::before{content:'';position:absolute;inset:10%;background:#ffcc00;border:.9cqw solid #1a1a1a;border-radius:2.2cqw;transform:rotate(45deg)}
+.dsign canvas{position:absolute;left:25%;top:25%;width:50%;height:50%}
+.dcard.empty .dsign::before{background:#d8d4c4;border-color:#8a8678}
+.dcard.empty .dsign canvas{display:none}
+.dcard.empty .dsign::after{content:'？';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9cqw;font-weight:bold;color:#8a8678}
+.dname{font-size:2.9cqw;font-weight:bold;text-align:center;line-height:1.3;margin-top:-1cqw;min-height:7.6cqw}
+.dstars{font-size:2.8cqw;color:#b98a00;letter-spacing:-.1cqw;margin-top:.2cqw}
+#dexFoot{font-size:2.8cqw;text-align:center;opacity:.75;padding:1.5cqw 4cqw 4.5cqw}
+#dexDetail{position:absolute;inset:0;z-index:55;background:#000a;display:none;align-items:center;justify-content:center;pointer-events:auto}
+#dexDetail.show{display:flex}
+#ddBox{width:86%;background:#ffcc00;border:1.4cqw solid #1a1a1a;border-radius:3cqw;padding:4cqw;display:flex;flex-direction:column;align-items:center;gap:2cqw;text-align:center;box-shadow:0 2cqw 0 #1a1a1a}
+#ddIcon{width:24cqw;height:24cqw;background:#fff3b0;border:.9cqw solid #1a1a1a;border-radius:3cqw}
+#ddName{font-size:6cqw;font-weight:bold;line-height:1.35}
+#ddMeta{font-size:3.6cqw;font-weight:bold}
+#ddClose{width:100%;height:11cqw;font-size:4.8cqw;background:#1a1a1a;color:#ffcc00;border-radius:3cqw;margin-top:1cqw}
+#cv3{position:absolute;inset:0;width:100%;height:100%;z-index:70;pointer-events:none}
 </style>
 </head>
 <body>
 <canvas id="cv"></canvas>
 <div id="stage">
   <div id="stripeT" class="hz"></div>
-  <div id="hdr"><span id="dayNo">1日目</span><span id="best"></span></div>
+  <div id="hdr"><span id="dayNo">1日目</span><span id="best"></span><button id="dexBtn" class="btn">図鑑 0/13</button></div>
   <div id="msg"></div>
   <div id="dests">
     <button class="btn dest" data-d="home">家</button>
@@ -87,14 +124,30 @@ body{display:flex;align-items:center;justify-content:center}
   </div>
   <div id="result">
     <div class="sign">死亡</div>
+    <div id="rBanner"></div>
+    <div id="rNew">NEW!</div>
     <div id="rCause"></div>
     <div id="rDays"></div>
+    <div id="rOdds"></div>
     <div id="rStat"><b id="rStatN"></b><span id="rStatNote"></span></div>
     <div id="rPrev"></div>
     <div id="rBest"></div>
-    <button id="retry" class="btn">もう一度</button>
+    <div id="rRow"><button id="retry" class="btn">もう一度</button><button id="dexOpen2" class="btn">図鑑</button></div>
     <div id="rGame">※ ゲームでは 死ぬ頻度を 大げさに しています</div>
   </div>
+  <div id="dex">
+    <div id="dexHead"><b id="dexTitle">図鑑</b><button id="dexClose" class="btn">とじる</button></div>
+    <div id="dexGrid"></div>
+    <div id="dexFoot">※ ゲームでは 死ぬ頻度を 大げさに しています</div>
+  </div>
+  <div id="dexDetail"><div id="ddBox">
+    <canvas id="ddIcon" width="160" height="160"></canvas>
+    <div id="ddName"></div><div id="ddMeta"></div>
+    <div style="align-self:stretch;background:#1a1a1a;color:#ffcc00;border-radius:2cqw;padding:2cqw 3cqw;display:flex;flex-direction:column;gap:.8cqw"><b id="ddStat" style="font-size:6.2cqw"></b><span id="ddNote" style="font-size:3.1cqw;color:#fff;line-height:1.4"></span></div>
+    <div id="ddPrev" style="font-size:3.5cqw;font-weight:bold;line-height:1.5"></div>
+    <button id="ddClose" class="btn">とじる</button>
+  </div></div>
+  <canvas id="cv3"></canvas>
   <div id="stripeB" class="hz"></div>
 </div>
 <script>
@@ -189,8 +242,13 @@ const DEATHS = [
     near: 'とおくで ゴロゴロと なった',
     // 全画面の場面（背景は 45-scenes.js がコードで描く）。impactT：この秒で直撃（白く暗転）。feet：ピクトグラムの足もと（世界の座標）。scale：大きさ
     cine: { scene: 'rakurai', impactT: 3.3, flash: '#ffffff', feet: [50, 152], scale: 1.3 } },
+  // 隠し枠：図鑑が 12 種そろったときだけ円盤に出る。日本での死亡の記録が見つからない（数字は「記録 0 人」）
+  { id: 'inseki', dest: 'any', hidden: true, name: '隕石に あたる', n: 0,
+    stat: '記録 0人', note: '日本で死亡した記録は 見つからない（調べた範囲）',
+    prevent: '心配は いらない。それより お風呂に 気をつけて',
+    near: '空に 光る点が ひとつ 見えた' },
 ];
-DEATHS.forEach(d => { d.weight = Math.max(CFG.minWeight, 1 + Math.log10(d.n)); });
+DEATHS.forEach(d => { d.weight = d.hidden ? CFG.minWeight : Math.max(CFG.minWeight, 1 + Math.log10(d.n)); });
 
 // 映像の試しプレイ用（rakurai-test.html だけで有効）。落雷だけが死のマスになり、1日目から死にやすい
 if (typeof TEST_RAKURAI !== 'undefined' && TEST_RAKURAI) {
@@ -222,10 +280,28 @@ function safeFrac(day, dest) {
   return Math.max(CFG.safeMin, Math.min(CFG.safeMax, base + destOf(dest).safeBonus));
 }
 
+// 図鑑まわり（画面側 65-dex.js が差し替える）。隠し枠（隕石）は、図鑑が 12 種そろうと円盤に出る
+let HIDDEN_ON = false;
+let DEX_HAS = () => false;                       // その死に方が図鑑に載っているか
+const dexOpen = () => DEATHS.filter(d => !d.hidden && !DEX_HAS(d.id)).length;   // 図鑑の空き
+const dexRegular = () => DEATHS.filter(d => !d.hidden).length;                  // 隠し枠をのぞく種類数
+
+// 円盤のマスの重み。図鑑の空きが半分以下になったら、まだ載っていない死に方を少し太くする（最大 3 倍）
+// （まれな死に方ほど出ないので、図鑑の最後が埋まらなくなるのを防ぐ）
+function wheelWeight(i) {
+  const d = DEATHS[i];
+  if (d.hidden || DEX_HAS(d.id)) return d.weight;
+  const got = dexRegular() - dexOpen(), half = dexRegular() / 2;
+  return d.weight * (1 + 2 * Math.max(0, Math.min(1, (got - half) / half)));
+}
+
 // その行き先で出る死に方（番号）。どこでも出る物（any）は どの行き先にも入る
 function destDeaths(dest) {
   const id = destOf(dest).id, out = [];
-  DEATHS.forEach((d, i) => { if (d.dest === id || d.dest === 'any') out.push(i); });
+  DEATHS.forEach((d, i) => {
+    if (d.hidden && !HIDDEN_ON) return;
+    if (d.dest === id || d.dest === 'any') out.push(i);
+  });
   return out;
 }
 
@@ -234,10 +310,10 @@ function buildWheel(day, dest) {
   const p = safeFrac(day, dest);
   const wedges = [{ kind: 'safe', a0: 0, a1: TAU * p }];
   const list = destDeaths(dest);
-  const total = list.reduce((s, i) => s + DEATHS[i].weight, 0);
+  const total = list.reduce((s, i) => s + wheelWeight(i), 0);
   let a = TAU * p;
   list.forEach(i => {
-    const w = TAU * (1 - p) * DEATHS[i].weight / total;
+    const w = TAU * (1 - p) * wheelWeight(i) / total;
     wedges.push({ kind: 'death', idx: i, a0: a, a1: a + w });
     a += w;
   });
@@ -793,6 +869,20 @@ const Snd = (() => {
       tone(190, t + 0.28, 0.22, { type: 'square', gain: 0.14 });
     },
     press() { if (ac) tone(660, now(), 0.06, { type: 'triangle', gain: 0.15 }); },
+    // 初めての死に方：ファンファーレ
+    fanfare() {
+      if (!ac) return;
+      const t = now();
+      [[523, 0], [659, 0.11], [784, 0.22], [1047, 0.36]].forEach(([f, d]) => tone(f, t + d, 0.28, { type: 'square', gain: 0.1 }));
+      [[523, 0.36], [659, 0.36], [784, 0.36]].forEach(([f, d]) => tone(f, t + d, 0.7, { type: 'triangle', gain: 0.12 }));
+    },
+    // 図鑑コンプリート／隕石が現れる：長いファンファーレ
+    grand() {
+      if (!ac) return;
+      const t = now();
+      [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => tone(f, t + i * 0.13, 0.3, { type: 'square', gain: 0.1 }));
+      [523, 659, 784, 1047].forEach(f => tone(f, t + 0.95, 1.1, { type: 'triangle', gain: 0.12 }));
+    },
   };
 })();
 // ===== 操作・ループ・結果 =====
@@ -827,6 +917,7 @@ function setMsg(text, cls) {
 
 function updateHeader() {
   $('dayNo').textContent = Game.day + '日目';
+  $('dexBtn').textContent = '図鑑 ' + dexGot() + '/' + dexTotal();
   const b = loadBest();
   $('best').textContent = b > 0 ? 'ベスト ' + b + '日目' : '';
 }
@@ -837,7 +928,7 @@ function onPhase(p) {
   const go = $('dests');
   if (p === 'ready') {
     updateHeader();
-    if (Game.day === 1) setMsg('きょうは どこへ 行く？');   // 2日目以降は前の日の一言を残す
+    if (Game.day === 1) setMsg(HIDDEN_ON ? '空に ふしぎな 光が 見える… どこへ 行く？' : 'きょうは どこへ 行く？');   // 2日目以降は前の日の一言を残す
     go.classList.remove('hide');
   } else if (p === 'spin') {
     setMsg('');
@@ -873,12 +964,29 @@ function showCard() {
   const isBest = Game.day > best;
   if (isBest) saveBest(Game.day);
   const D = DEATHS[Game.deathIdx];
+  const r = dexRecord(Game.deathIdx);          // 図鑑に記録（初めてなら NEW）
+  $('rNew').style.display = r.isNew ? 'block' : 'none';
+  const od = $('rOdds');
+  od.className = r.isNew ? 'new' : '';
+  if (r.isNew) {
+    const odds = D.n > 0 ? '年間 ' + oddsText(D) + 'の 死に方' : '日本では 記録のない 死に方';
+    od.innerHTML = '<span class="nb">おめでとうございます！</span><br><span class="nb">' + odds + '</span> <span class="nb">' + starsText(D) + '</span>';
+  } else {
+    od.textContent = starsText(D) + '  ・  ' + r.count + '回目';
+  }
+  const bn = $('rBanner');
+  if (r.complete) { bn.textContent = '図鑑コンプリート！'; bn.style.display = 'block'; }
+  else if (r.unlocked) { bn.textContent = '12種 そろった！ 空に 光が…'; bn.style.display = 'block'; }
+  else bn.style.display = 'none';
+  $('rGame').style.display = (r.complete || r.unlocked) ? 'none' : '';   // カードが長くなるので断り書きは省く（図鑑の下には常にある）
+  if (r.complete || r.unlocked) { Snd.grand(); confetti(r.complete ? 170 : 100, true); }
+  else if (r.isNew) { Snd.fanfare(); confetti(45, true); }
   $('rCause').textContent = D.name;
   $('rStatN').textContent = D.stat;
   $('rStatNote').textContent = D.note;
   $('rPrev').innerHTML = '<i>防ぐには</i>' + D.prevent;
   $('rDays').innerHTML = '<span class="nb">' + Game.day + '日目に</span> <span class="nb">死亡</span>';
-  $('rBest').textContent = isBest && best > 0 ? 'きろく こうしん！' : (best > 0 ? 'ベスト ' + Math.max(best, Game.day) + '日目' : '');
+  $('rBest').textContent = (isBest && best > 0 ? 'きろく こうしん！' : (best > 0 ? 'ベスト ' + Math.max(best, Game.day) + '日目' : '')) + (best > 0 ? '  ・  ' : '') + '図鑑 ' + r.got + '/' + r.total;
   $('msg').style.visibility = 'hidden';
   cv.style.filter = '';
   $('result').classList.add('show');
@@ -902,9 +1010,215 @@ function frame(ts) {
   if (Game.phase !== uiPhase) onPhase(Game.phase);
   if (cardTimer > 0) { cardTimer -= dt; if (cardTimer <= 0 && !cardShown) showCard(); }
   cineFrame(dt);
+  confettiFrame(dt);
   updateHeader();
   render(dt);
   requestAnimationFrame(frame);
+}
+// ===== 図鑑とご褒美：注意標識のカード・NEW の判子・レア度・紙ふぶき =====
+const DEX_KEY = 'death-simulator-dex';
+const POP_JP = 124350000;          // 日本の人口（約 1 億 2,435 万人・2023 年）。「○人に 1 人」の計算に使う
+let dexData = {};                  // { 死に方の id: 死んだ回数 }
+
+function dexLoad() {
+  try { dexData = JSON.parse(localStorage.getItem(DEX_KEY)) || {}; } catch (_) { dexData = {}; }
+}
+function dexSave() { try { localStorage.setItem(DEX_KEY, JSON.stringify(dexData)); } catch (_) {} }
+function dexTotal() { return DEATHS.length; }                          // 13（隠し枠の隕石をふくむ）
+function dexGot() { return DEATHS.filter(d => dexData[d.id] > 0).length; }
+function dexSync() {               // 図鑑の中身から、円盤に関わる状態を決める
+  DEX_HAS = id => dexData[id] > 0;
+  HIDDEN_ON = dexRegular() - dexOpen() >= dexRegular();   // 12 種そろったら隕石が円盤に出る
+}
+function dexInit() {
+  dexLoad(); dexSync();
+  window.addEventListener('resize', cv3Resize);
+  cv3Resize();
+  $('dexBtn').addEventListener('click', () => { Snd.init(); Snd.press(); dexShow(); });
+  $('dexOpen2').addEventListener('click', () => { Snd.init(); Snd.press(); dexShow(); });
+  $('dexClose').addEventListener('click', () => { Snd.press(); dexHide(); });
+  $('ddClose').addEventListener('click', () => { Snd.press(); $('dexDetail').classList.remove('show'); });
+  $('dexDetail').addEventListener('click', e => { if (e.target === $('dexDetail')) $('dexDetail').classList.remove('show'); });
+}
+
+// レア度（★ 1〜5）：年間の死者が少ないほど高い。隠し枠は 5
+function starCount(d) {
+  if (d.hidden || !(d.n > 0)) return 5;
+  return Math.max(1, Math.min(5, Math.round(5 - Math.log10(d.n) * 1.2)));
+}
+const starsText = d => '★'.repeat(starCount(d)) + '☆'.repeat(5 - starCount(d));
+
+// 「年間 ○人に 1 人」
+function oddsText(d) {
+  if (!(d.n > 0)) return '記録なし';
+  const p = POP_JP / d.n;
+  if (p >= 1e8) return '約' + (p / 1e8).toFixed(1).replace(/\.0$/, '') + '億人に 1 人';
+  if (p >= 1e4) return '約' + Math.round(p / 1e4) + '万人に 1 人';
+  return '約' + Math.round(p) + '人に 1 人';
+}
+
+// 死んだことを図鑑に記録する。画面に出すための情報を返す
+function dexRecord(idx) {
+  const d = DEATHS[idx];
+  const regBefore = dexRegular() - dexOpen();
+  const prev = dexData[d.id] || 0;
+  dexData[d.id] = prev + 1;
+  dexSave();
+  dexSync();
+  const regAfter = dexRegular() - dexOpen();
+  return {
+    isNew: prev === 0, count: dexData[d.id], got: dexGot(), total: dexTotal(),
+    unlocked: regBefore < dexRegular() && regAfter === dexRegular(),     // 今ちょうど 12 種そろった
+    complete: dexGot() === dexTotal() && prev === 0,                     // 今ちょうど 13 枚そろった
+  };
+}
+
+// ---- ピクトグラム風のアイコン（黒・単純な形。[-1,1] の箱の中に描く）----
+const ICON_INK = '#1a1a1a', ICON_BG = '#ffcc00';
+const ICONS = {
+  mochi(c) {
+    c.beginPath(); c.ellipse(-0.1, 0.35, 0.65, 0.4, 0, 0, TAU); c.fill();
+    c.lineWidth = 0.22; c.beginPath(); c.moveTo(0.25, 0.1); c.quadraticCurveTo(0.7, -0.4, 0.15, -0.8); c.stroke();
+  },
+  yuki(c) {
+    c.beginPath(); c.moveTo(-0.9, 0.55); c.lineTo(0, -0.45); c.lineTo(0.9, 0.55); c.closePath(); c.fill();
+    c.fillStyle = '#fff'; c.lineWidth = 0.08;
+    [[-0.25, -0.1, 0.2], [0.2, 0.05, 0.22], [-0.05, 0.3, 0.2]].forEach(([x, y, r]) => { c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); c.stroke(); });
+  },
+  fugu(c) {
+    c.beginPath(); c.ellipse(-0.1, 0.05, 0.6, 0.5, 0, 0, TAU); c.fill();
+    c.beginPath(); c.moveTo(0.45, 0.05); c.lineTo(0.9, -0.3); c.lineTo(0.9, 0.4); c.closePath(); c.fill();
+    c.lineWidth = 0.1; c.beginPath();
+    for (let i = 0; i < 6; i++) { const a = -2.6 + i * 0.85, x = -0.1 + Math.cos(a) * 0.55, y = 0.05 + Math.sin(a) * 0.45; c.moveTo(x, y); c.lineTo(x + Math.cos(a) * 0.22, y + Math.sin(a) * 0.22); }
+    c.stroke(); c.fillStyle = ICON_BG; c.beginPath(); c.arc(-0.4, -0.05, 0.1, 0, TAU); c.fill();
+  },
+  kinoko(c) {
+    c.beginPath(); c.arc(0, 0.05, 0.85, Math.PI, 0); c.closePath(); c.fill();
+    c.fillRect(-0.25, 0.05, 0.5, 0.7);
+    c.fillStyle = ICON_BG; [[-0.4, -0.3, 0.14], [0.15, -0.5, 0.12], [0.45, -0.15, 0.1]].forEach(([x, y, r]) => { c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); });
+  },
+  furo(c) {
+    c.beginPath(); c.moveTo(-0.9, 0); c.lineTo(0.9, 0); c.lineTo(0.7, 0.65); c.lineTo(-0.7, 0.65); c.closePath(); c.fill();
+    c.lineWidth = 0.1; c.beginPath();
+    [-0.4, 0, 0.4].forEach(x => { c.moveTo(x, -0.1); c.bezierCurveTo(x - 0.2, -0.3, x + 0.2, -0.5, x, -0.75); });
+    c.stroke();
+  },
+  hachi(c) {
+    c.beginPath(); c.ellipse(0, 0.15, 0.5, 0.38, 0, 0, TAU); c.fill();
+    c.fillStyle = ICON_BG; [-0.15, 0.1].forEach(x => c.fillRect(x, -0.2, 0.1, 0.7));
+    c.fillStyle = ICON_INK; c.beginPath(); c.moveTo(-0.5, 0.15); c.lineTo(-0.95, 0.2); c.lineTo(-0.5, 0.3); c.fill();
+    c.lineWidth = 0.09; c.beginPath(); c.ellipse(0.05, -0.4, 0.3, 0.17, -0.5, 0, TAU); c.ellipse(0.35, -0.35, 0.25, 0.15, 0.3, 0, TAU); c.stroke();
+  },
+  hebi(c) {
+    c.lineWidth = 0.3; c.lineCap = 'round'; c.beginPath();
+    c.moveTo(-0.7, 0.65); c.bezierCurveTo(-0.9, 0.1, 0.2, 0.4, 0.3, 0); c.bezierCurveTo(0.4, -0.35, -0.5, -0.1, -0.1, -0.6); c.stroke();
+    c.beginPath(); c.arc(-0.05, -0.65, 0.2, 0, TAU); c.fill();
+  },
+  nadare(c) {
+    c.beginPath(); c.moveTo(-0.95, 0.7); c.lineTo(-0.1, -0.75); c.lineTo(0.55, 0.7); c.closePath(); c.fill();
+    c.strokeStyle = ICON_BG; c.lineWidth = 0.1; c.beginPath();
+    [[-0.2, -0.3, 0.1, 0.3], [-0.05, -0.1, 0.3, 0.45], [-0.25, 0.1, 0.0, 0.55]].forEach(([x, y, x2, y2]) => { c.moveTo(x, y); c.lineTo(x2, y2); });
+    c.stroke(); c.fillStyle = ICON_INK; c.beginPath(); c.moveTo(0.5, 0.7); c.lineTo(0.75, 0.2); c.lineTo(0.95, 0.7); c.closePath(); c.fill();
+  },
+  sangaku(c) {
+    c.beginPath(); c.moveTo(-0.95, 0.7); c.lineTo(-0.35, -0.5); c.lineTo(0.05, 0.1); c.lineTo(0.4, -0.3); c.lineTo(0.95, 0.7); c.closePath(); c.fill();
+    c.strokeStyle = ICON_BG; c.lineWidth = 0.09; c.setLineDash([0.12, 0.12]); c.beginPath(); c.moveTo(0.5, 0.65); c.bezierCurveTo(-0.1, 0.5, 0.5, 0.2, -0.1, 0.1); c.stroke(); c.setLineDash([]);
+  },
+  umi(c) {
+    c.lineWidth = 0.14; c.lineCap = 'round'; c.beginPath();
+    [0.15, 0.5, 0.85].forEach((y, i) => { c.moveTo(-0.9, y); for (let k = 0; k < 4; k++) c.quadraticCurveTo(-0.9 + k * 0.45 + 0.22, y - 0.28, -0.9 + (k + 1) * 0.45, y); });
+    c.stroke(); c.beginPath(); c.arc(0.1, -0.35, 0.17, 0, TAU); c.fill();
+    c.lineWidth = 0.1; c.beginPath(); c.moveTo(0.1, -0.15); c.lineTo(-0.15, -0.55); c.moveTo(0.1, -0.15); c.lineTo(0.38, -0.55); c.stroke();
+  },
+  tsuri(c) {
+    c.lineWidth = 0.1; c.lineCap = 'round'; c.beginPath();
+    c.moveTo(-0.85, 0.7); c.lineTo(0.55, -0.75); c.moveTo(0.55, -0.75); c.lineTo(0.55, 0.15); c.stroke();
+    c.beginPath(); c.arc(0.45, 0.28, 0.13, -0.5, 2.8); c.stroke();
+    c.lineWidth = 0.12; c.beginPath(); c.moveTo(-0.2, 0.85); c.quadraticCurveTo(0, 0.65, 0.2, 0.85); c.quadraticCurveTo(0.4, 1.0, 0.6, 0.85); c.stroke();
+  },
+  rakurai(c) {
+    c.beginPath(); [[-0.55, -0.35, 0.3], [-0.15, -0.55, 0.38], [0.35, -0.4, 0.3], [0.05, -0.28, 0.4]].forEach(([x, y, r]) => { c.moveTo(x + r, y); c.arc(x, y, r, 0, TAU); }); c.fill();
+    c.fillStyle = ICON_BG; c.strokeStyle = ICON_INK; c.lineWidth = 0.07;
+    c.beginPath(); c.moveTo(0.15, -0.3); c.lineTo(-0.3, 0.2); c.lineTo(0, 0.2); c.lineTo(-0.2, 0.85); c.lineTo(0.4, 0.05); c.lineTo(0.08, 0.05); c.lineTo(0.35, -0.3); c.closePath(); c.fill(); c.stroke();
+  },
+  inseki(c) {
+    c.beginPath(); c.arc(0.2, 0.25, 0.42, 0, TAU); c.fill();
+    c.lineWidth = 0.16; c.lineCap = 'round'; c.beginPath(); c.moveTo(-0.1, -0.05); c.lineTo(-0.85, -0.8); c.moveTo(-0.2, 0.2); c.lineTo(-0.95, -0.35); c.moveTo(0.1, -0.2); c.lineTo(-0.45, -0.85); c.stroke();
+  },
+};
+function drawIcon(cnv, id, ink) {
+  const c = cnv.getContext('2d'), s = cnv.width;
+  c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, s, s);
+  c.setTransform(s / 2.2, 0, 0, s / 2.2, s / 2, s / 2);
+  c.fillStyle = c.strokeStyle = ink || ICON_INK; c.lineJoin = 'round';
+  (ICONS[id] || ICONS.inseki)(c);
+}
+
+// ---- 図鑑の画面 ----
+function dexRender() {
+  const grid = $('dexGrid'); grid.innerHTML = '';
+  DEATHS.forEach((d, i) => {
+    const has = dexData[d.id] > 0;
+    const card = document.createElement('div');
+    card.className = 'dcard' + (has ? '' : ' empty');
+    const sign = document.createElement('div'); sign.className = 'dsign';
+    const cnv = document.createElement('canvas'); cnv.width = cnv.height = 96;
+    sign.appendChild(cnv); card.appendChild(sign);
+    if (has) drawIcon(cnv, d.id);
+    const nm = document.createElement('div'); nm.className = 'dname';
+    nm.textContent = has ? d.name.replace(/ /g, '') : '？？？';
+    card.appendChild(nm);
+    const st = document.createElement('div'); st.className = 'dstars';
+    st.textContent = has ? starsText(d) + ' ×' + dexData[d.id] : '';
+    card.appendChild(st);
+    if (has) card.addEventListener('click', () => dexDetail(i));
+    grid.appendChild(card);
+  });
+  $('dexTitle').textContent = '図鑑 ' + dexGot() + '/' + dexTotal();
+}
+function dexShow() { dexRender(); $('dex').classList.add('show'); }
+function dexHide() { $('dex').classList.remove('show'); $('dexDetail').classList.remove('show'); }
+function dexDetail(i) {
+  const d = DEATHS[i];
+  drawIcon($('ddIcon'), d.id);
+  $('ddName').textContent = d.name;
+  $('ddMeta').textContent = starsText(d) + '  ・  ' + (d.n > 0 ? '年間 ' + oddsText(d) : oddsText(d)) + '  ・  ' + dexData[d.id] + '回';
+  $('ddStat').textContent = d.stat; $('ddNote').textContent = d.note;
+  $('ddPrev').innerHTML = '<i style="font-style:normal;background:#1a1a1a;color:#ffcc00;border-radius:1cqw;padding:.3cqw 1.4cqw;margin-right:1.2cqw;font-size:3.2cqw">防ぐには</i>' + d.prevent;
+  $('dexDetail').classList.add('show');
+}
+
+// ---- 紙ふぶき ----
+const cv3 = $('cv3'), ctx3 = cv3.getContext('2d');
+let conf = [], cv3K = 1;
+function cv3Resize() {
+  const r = $('stage').getBoundingClientRect(), d = Math.min(window.devicePixelRatio || 1, 2);
+  cv3.width = Math.round(r.width * d); cv3.height = Math.round(r.height * d);
+  cv3K = r.width / CFG.worldW * d;
+}
+function confetti(n, fromTop) {
+  const cols = ['#ffcc00', '#1a1a1a', '#ffffff', '#d9291c', '#4aa3ff'];
+  for (let i = 0; i < n; i++) {
+    conf.push({
+      x: Math.random() * CFG.worldW, y: fromTop ? -5 - Math.random() * 30 : 40 + Math.random() * 20,
+      vx: (Math.random() - 0.5) * 30, vy: fromTop ? 10 + Math.random() * 25 : -50 - Math.random() * 60,
+      w: 1.2 + Math.random() * 1.8, h: 0.8 + Math.random() * 1.2, a: Math.random() * TAU, va: (Math.random() - 0.5) * 12,
+      col: cols[i % cols.length], life: 2.6 + Math.random() * 1.6,
+    });
+  }
+}
+function confettiFrame(dt) {
+  ctx3.setTransform(1, 0, 0, 1, 0, 0); ctx3.clearRect(0, 0, cv3.width, cv3.height);
+  if (!conf.length) return;
+  ctx3.setTransform(cv3K, 0, 0, cv3K, 0, 0);
+  conf = conf.filter(p => (p.life -= dt) > 0 && p.y < CFG.worldH + 5);
+  conf.forEach(p => {
+    p.vy += 70 * dt; p.vx *= 0.995; p.x += p.vx * dt; p.y += p.vy * dt; p.a += p.va * dt;
+    ctx3.save(); ctx3.translate(p.x, p.y); ctx3.rotate(p.a);
+    ctx3.globalAlpha = Math.min(1, p.life);
+    ctx3.fillStyle = p.col; ctx3.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+    ctx3.restore();
+  });
 }
 // ===== 死亡演出：全画面の場面（背景は 45-scenes.js がコードで描く）=====
 // 流れ：止まる(0.3秒・色が抜ける) → 全画面の場面に切り替わる → 迫る(ピクトグラムが気づいて慌てる・寄りと揺れ) → 直撃で白く暗転 → 死因カード
@@ -1045,6 +1359,7 @@ function cineFrame(dt) {
 cineEl.addEventListener('pointerdown', e => { e.preventDefault(); cineSkip(); });
 window.addEventListener('resize', () => { if (Cine.on) cineResize(); });
 // ===== 起動 =====
+dexInit();
 Game.reset();
 resize();
 bindUI();

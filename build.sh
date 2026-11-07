@@ -9,6 +9,7 @@ cat src/00-head.html \
     src/45-scenes.js \
     src/50-audio.js \
     src/60-ui.js \
+    src/65-dex.js \
     src/70-cine.js \
     src/90-boot.js \
     src/99-tail.html > death-simulator.html
@@ -23,6 +24,7 @@ cat src/00-head.html \
     src/45-scenes.js \
     src/50-audio.js \
     src/60-ui.js \
+    src/65-dex.js \
     src/70-cine.js \
     src/90-boot.js \
     src/99-tail.html > rakurai-test.html

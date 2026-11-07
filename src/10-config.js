@@ -89,8 +89,13 @@ const DEATHS = [
     near: 'とおくで ゴロゴロと なった',
     // 全画面の場面（背景は 45-scenes.js がコードで描く）。impactT：この秒で直撃（白く暗転）。feet：ピクトグラムの足もと（世界の座標）。scale：大きさ
     cine: { scene: 'rakurai', impactT: 3.3, flash: '#ffffff', feet: [50, 152], scale: 1.3 } },
+  // 隠し枠：図鑑が 12 種そろったときだけ円盤に出る。日本での死亡の記録が見つからない（数字は「記録 0 人」）
+  { id: 'inseki', dest: 'any', hidden: true, name: '隕石に あたる', n: 0,
+    stat: '記録 0人', note: '日本で死亡した記録は 見つからない（調べた範囲）',
+    prevent: '心配は いらない。それより お風呂に 気をつけて',
+    near: '空に 光る点が ひとつ 見えた' },
 ];
-DEATHS.forEach(d => { d.weight = Math.max(CFG.minWeight, 1 + Math.log10(d.n)); });
+DEATHS.forEach(d => { d.weight = d.hidden ? CFG.minWeight : Math.max(CFG.minWeight, 1 + Math.log10(d.n)); });
 
 // 映像の試しプレイ用（rakurai-test.html だけで有効）。落雷だけが死のマスになり、1日目から死にやすい
 if (typeof TEST_RAKURAI !== 'undefined' && TEST_RAKURAI) {
