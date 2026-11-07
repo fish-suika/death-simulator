@@ -75,16 +75,18 @@ const CFG = {
   worldH: 100 * 16 / 9,
   shareUrl: 'https://fish-suika.github.io/death-simulator/',
 
-  // 「無事」の幅（円盤全体に対する割合）。1日目が一番太く、毎日細くなる。平均 6〜8 日で死ぬ目安
-  safeStart: 0.92,
-  safeStep: 0.015,
+  // 「無事」の幅（円盤全体に対する割合）。1日目が一番太く、毎日細くなる。平均 3〜4 日で死ぬ目安
+  // （Phase 1 のテストプレイで「死ぬまで何回も回すので飽きる」と言われ、6.9日→3.6日に短くした）
+  safeStart: 0.85,
+  safeStep: 0.07,
   safeMin: 0.2,
 
   // 円盤
   wheel: { cx: 50, cy: 104, R: 35 },
-  spinSecs: 4.6,        // 回り始めから止まるまで
+  spinSecs: 2.8,        // 回り始めから止まるまで（4.6秒だと長いと言われた）
   easePow: 3.2,         // 大きいほど最後がじわじわ遅くなる（ドキドキの主な調整）
-  turnsMin: 3,          // 最低でも何周するか（3〜4周）
+  turnsMin: 2,          // 最低でも何周するか（2〜3周）
+  autoNextSecs: 1.0,    // 無事で止まってから自動で翌日へ進むまで（「あしたへ」を押す手間をなくす）
   edgeMargin: 0.004,    // 止まる位置を境目からこれ(rad)以上離す（境目での判定ぶれを防ぐ）
 
   // 演出
@@ -490,7 +492,6 @@ function bindUI() {
   $('go').addEventListener('click', () => {
     Snd.init();
     if (Game.phase === 'ready') Game.spin();
-    else if (Game.phase === 'safe') Game.next();
   });
   $('retry').addEventListener('click', () => {
     Snd.init(); Snd.press();
@@ -520,7 +521,7 @@ function onPhase(p) {
   const go = $('go');
   if (p === 'ready') {
     updateHeader();
-    setMsg(Game.day === 1 ? 'さあ、今日の 運だめし' : 'あたらしい 一日がはじまる');
+    if (Game.day === 1) setMsg('さあ、今日の 運だめし');   // 2日目以降は前の日の一言を残す
     go.textContent = 'まわす'; go.classList.remove('hide');
   } else if (p === 'spin') {
     setMsg('');
@@ -534,7 +535,7 @@ function onPhase(p) {
     else line = pick(SAFE_LINES);
     setMsg(line);
     Snd.safe(); if (close) Snd.relief();
-    go.textContent = 'あしたへ'; go.classList.remove('hide');
+    go.classList.add('hide');   // 少し見せてから自動で翌日へ（frame で next）
   } else if (p === 'dead') {
     setMsg('死因：' + DEATHS[Game.deathIdx].name, 'dead');
     go.classList.add('hide');
@@ -568,6 +569,7 @@ function frame(ts) {
       Snd.tick(Game.wedges[idx].kind === 'death', slow);
     }
   }
+  if (Game.phase === 'safe' && Game.tPhase > CFG.autoNextSecs) Game.next();
   if (Game.phase !== uiPhase) onPhase(Game.phase);
   if (Game.phase === 'dead' && !cardShown && Game.tPhase > CFG.deathCardDelay) showCard();
   updateHeader();

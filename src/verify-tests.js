@@ -95,7 +95,7 @@
       sum += Game.day; longest = Math.max(longest, Game.day);
     }
     const mean = sum / N;
-    check('平均 6〜8 日で死ぬ', mean >= 6 && mean <= 8, '平均 ' + mean.toFixed(2) + ' 日目 / 最長 ' + longest + ' 日目');
+    check('平均 3〜4.5 日で死ぬ（飽きないよう短め）', mean >= 3 && mean <= 4.5, '平均 ' + mean.toFixed(2) + ' 日目 / 最長 ' + longest + ' 日目');
   }
   {
     // 深い日なら、どの死に方も出る

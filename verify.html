@@ -10,16 +10,18 @@ const CFG = {
   worldH: 100 * 16 / 9,
   shareUrl: 'https://fish-suika.github.io/death-simulator/',
 
-  // 「無事」の幅（円盤全体に対する割合）。1日目が一番太く、毎日細くなる。平均 6〜8 日で死ぬ目安
-  safeStart: 0.92,
-  safeStep: 0.015,
+  // 「無事」の幅（円盤全体に対する割合）。1日目が一番太く、毎日細くなる。平均 3〜4 日で死ぬ目安
+  // （Phase 1 のテストプレイで「死ぬまで何回も回すので飽きる」と言われ、6.9日→3.6日に短くした）
+  safeStart: 0.85,
+  safeStep: 0.07,
   safeMin: 0.2,
 
   // 円盤
   wheel: { cx: 50, cy: 104, R: 35 },
-  spinSecs: 4.6,        // 回り始めから止まるまで
+  spinSecs: 2.8,        // 回り始めから止まるまで（4.6秒だと長いと言われた）
   easePow: 3.2,         // 大きいほど最後がじわじわ遅くなる（ドキドキの主な調整）
-  turnsMin: 3,          // 最低でも何周するか（3〜4周）
+  turnsMin: 2,          // 最低でも何周するか（2〜3周）
+  autoNextSecs: 1.0,    // 無事で止まってから自動で翌日へ進むまで（「あしたへ」を押す手間をなくす）
   edgeMargin: 0.004,    // 止まる位置を境目からこれ(rad)以上離す（境目での判定ぶれを防ぐ）
 
   // 演出
@@ -279,7 +281,7 @@ const Game = {
       sum += Game.day; longest = Math.max(longest, Game.day);
     }
     const mean = sum / N;
-    check('平均 6〜8 日で死ぬ', mean >= 6 && mean <= 8, '平均 ' + mean.toFixed(2) + ' 日目 / 最長 ' + longest + ' 日目');
+    check('平均 3〜4.5 日で死ぬ（飽きないよう短め）', mean >= 3 && mean <= 4.5, '平均 ' + mean.toFixed(2) + ' 日目 / 最長 ' + longest + ' 日目');
   }
   {
     // 深い日なら、どの死に方も出る

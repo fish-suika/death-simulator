@@ -10,7 +10,6 @@ function bindUI() {
   $('go').addEventListener('click', () => {
     Snd.init();
     if (Game.phase === 'ready') Game.spin();
-    else if (Game.phase === 'safe') Game.next();
   });
   $('retry').addEventListener('click', () => {
     Snd.init(); Snd.press();
@@ -40,7 +39,7 @@ function onPhase(p) {
   const go = $('go');
   if (p === 'ready') {
     updateHeader();
-    setMsg(Game.day === 1 ? 'さあ、今日の 運だめし' : 'あたらしい 一日がはじまる');
+    if (Game.day === 1) setMsg('さあ、今日の 運だめし');   // 2日目以降は前の日の一言を残す
     go.textContent = 'まわす'; go.classList.remove('hide');
   } else if (p === 'spin') {
     setMsg('');
@@ -54,7 +53,7 @@ function onPhase(p) {
     else line = pick(SAFE_LINES);
     setMsg(line);
     Snd.safe(); if (close) Snd.relief();
-    go.textContent = 'あしたへ'; go.classList.remove('hide');
+    go.classList.add('hide');   // 少し見せてから自動で翌日へ（frame で next）
   } else if (p === 'dead') {
     setMsg('死因：' + DEATHS[Game.deathIdx].name, 'dead');
     go.classList.add('hide');
@@ -88,6 +87,7 @@ function frame(ts) {
       Snd.tick(Game.wedges[idx].kind === 'death', slow);
     }
   }
+  if (Game.phase === 'safe' && Game.tPhase > CFG.autoNextSecs) Game.next();
   if (Game.phase !== uiPhase) onPhase(Game.phase);
   if (Game.phase === 'dead' && !cardShown && Game.tPhase > CFG.deathCardDelay) showCard();
   updateHeader();
