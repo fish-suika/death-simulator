@@ -7,9 +7,11 @@ cat src/00-head.html \
     src/20-logic.js \
     src/40-render.js \
     src/45-scenes.js \
+    src/46-scenes2.js \
     src/50-audio.js \
     src/60-ui.js \
     src/65-dex.js \
+    src/66-share.js \
     src/70-cine.js \
     src/90-boot.js \
     src/99-tail.html > death-simulator.html
@@ -22,9 +24,11 @@ cat src/00-head.html \
     src/20-logic.js \
     src/40-render.js \
     src/45-scenes.js \
+    src/46-scenes2.js \
     src/50-audio.js \
     src/60-ui.js \
     src/65-dex.js \
+    src/66-share.js \
     src/70-cine.js \
     src/90-boot.js \
     src/99-tail.html > rakurai-test.html
@@ -38,3 +42,12 @@ cat src/verify-head.html \
 
 echo "built death-simulator.html + index.html ($(wc -c < death-simulator.html) bytes)"
 echo "built rakurai-test.html, verify.html"
+
+# 場面の一覧確認ページ（開発用）
+cat src/check-head.html \
+    src/10-config.js \
+    src/20-logic.js \
+    src/45-scenes.js \
+    src/46-scenes2.js \
+    src/check-run.js \
+    src/99-tail.html > scene-check.html

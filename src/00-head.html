@@ -69,7 +69,22 @@ body{display:flex;align-items:center;justify-content:center}
 #rRow{display:flex;gap:2.5cqw;align-self:stretch;margin-top:.5cqw}
 #retry{flex:1;height:12.5cqw;font-size:5.4cqw;background:#1a1a1a;color:#ffcc00;border-radius:3cqw}
 #retry:active{transform:translateY(.8cqw)}
-#dexOpen2{width:24cqw;height:12.5cqw;font-size:4.6cqw;background:#fff3b0;color:#1a1a1a;border:.9cqw solid #1a1a1a;border-radius:3cqw}
+#dexOpen2{width:19cqw;height:12.5cqw;font-size:4.4cqw;background:#fff3b0;color:#1a1a1a;border:.9cqw solid #1a1a1a;border-radius:3cqw}
+#shareBtn{width:13cqw;height:12.5cqw;font-size:6cqw;background:#fff;color:#1a1a1a;border:.9cqw solid #1a1a1a;border-radius:3cqw}
+
+/* タイトル：注意看板 */
+#title{position:absolute;inset:0;z-index:80;background:#fbf8ee;display:flex;flex-direction:column;align-items:center;justify-content:safe center;
+  gap:3.2cqw;padding:12cqw 8cqw;text-align:center;pointer-events:auto;cursor:pointer;animation:cfade .3s both}
+#title.out{animation:cout .45s both}
+#titleSign{position:relative;width:62cqw;height:62cqw;flex:none}
+#titleSign::before{content:'';position:absolute;inset:9%;background:#ffcc00;border:1.6cqw solid #1a1a1a;border-radius:4cqw;transform:rotate(45deg);box-shadow:0 1.4cqw 0 #1a1a1a}
+#titleFig{position:absolute;left:25%;top:22%;width:50%;height:56%}
+#titleName{font-size:10.4cqw;font-weight:bold;line-height:1.2;letter-spacing:.4cqw}
+#titleSub{font-size:5.2cqw;font-weight:bold}
+#titleGo{margin-top:3cqw;background:#ffcc00;color:#1a1a1a;border:1cqw solid #1a1a1a;border-radius:3.2cqw;box-shadow:0 1.4cqw 0 #1a1a1a;
+  font-size:7cqw;font-weight:bold;letter-spacing:.8cqw;padding:3.2cqw 12cqw 3.2cqw 13cqw;animation:blink 1.4s ease-in-out infinite}
+@keyframes blink{50%{transform:scale(1.05)}}
+#titleNote{font-size:3.2cqw;opacity:.75;line-height:1.6}
 #rOdds{font-size:3.7cqw;font-weight:bold;line-height:1.5}
 #rOdds.new{color:#1a1a1a;background:#fff;border-radius:1.6cqw;padding:1.2cqw 2.4cqw;border:.6cqw solid #1a1a1a}
 #rNew{position:absolute;top:1.4cqw;right:3cqw;display:none;transform:rotate(10deg);border:.8cqw solid #d9291c;color:#d9291c;
@@ -132,7 +147,7 @@ body{display:flex;align-items:center;justify-content:center}
     <div id="rStat"><b id="rStatN"></b><span id="rStatNote"></span></div>
     <div id="rPrev"></div>
     <div id="rBest"></div>
-    <div id="rRow"><button id="retry" class="btn">もう一度</button><button id="dexOpen2" class="btn">図鑑</button></div>
+    <div id="rRow"><button id="retry" class="btn">もう一度</button><button id="dexOpen2" class="btn">図鑑</button><button id="shareBtn" class="btn" aria-label="Xで共有">X</button></div>
     <div id="rGame">※ ゲームでは 死ぬ頻度を 大げさに しています</div>
   </div>
   <div id="dex">
@@ -148,6 +163,13 @@ body{display:flex;align-items:center;justify-content:center}
     <button id="ddClose" class="btn">とじる</button>
   </div></div>
   <canvas id="cv3"></canvas>
+  <div id="title">
+    <div id="titleSign"><canvas id="titleFig" width="300" height="340"></canvas></div>
+    <div id="titleName"><span class="nb">死亡</span><span class="nb">シミュレーター</span></div>
+    <div id="titleSub"><span class="nb">あなたは</span> <span class="nb">今日、</span><span class="nb">何で</span> <span class="nb">死ぬ？</span></div>
+    <div id="titleGo">はじめる</div>
+    <div id="titleNote"><span class="nb">日本の本当の統計をもとにした</span> <span class="nb">ゲームです。</span><br><span class="nb">死ぬ頻度は</span> <span class="nb">大げさに</span> <span class="nb">してあります</span></div>
+  </div>
   <div id="stripeB" class="hz"></div>
 </div>
 <script>

@@ -61,14 +61,15 @@ function cineBegin() {
   cineResize();
   cineFlash.style.opacity = '0';
   cineEl.classList.remove('out'); cineEl.classList.add('show');
-  Snd.cineStart(Cine.def.impactT);
+  Snd.cineStart(Cine.def.impactT, Cine.def.sound);
 }
 
 function cineImpact() {
   Cine.impacted = true; Cine.afterT = 0;
+  cineFlash.style.background = Cine.def.flash || '#fff';     // 暗転の色は死に方ごと（白＝雷・雪・隕石／黒＝ほか）
   cineFlash.style.opacity = '1';
   ctx2.setTransform(1, 0, 0, 1, 0, 0); ctx2.clearRect(0, 0, cv2.width, cv2.height);   // 当たった瞬間、ピクトグラムは見せない
-  Snd.impact();
+  Snd.impact(Cine.def.flash);
   markSeen(Cine.def.id || DEATHS[Game.deathIdx].id);
 }
 

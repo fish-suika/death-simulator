@@ -30,7 +30,7 @@ const Snd = (() => {
     g.gain.setValueAtTime(0.0001, t0);
     g.gain.exponentialRampToValueAtTime(v, t0 + a);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    osc.connect(g); g.connect(master);
+    osc.connect(g); g.connect(o.dest || master);
     osc.start(t0); osc.stop(t0 + dur + 0.05);
   }
   function noise(t0, dur, o) {
@@ -57,9 +57,10 @@ const Snd = (() => {
   return {
     init,
     // 落雷の映像：風が強まり、遠くで雷鳴、放電の音が高まる。impactT 秒で止まる（直撃の音は impact() を別に鳴らす）
-    cineStart(impactT) {
+    cineStart(impactT, kind) {
       if (!ac) return;
       cutBus();
+      if (kind && kind !== 'storm') return this.cineOther(impactT, kind);
       const t = now();
       bus = ac.createGain(); bus.gain.value = 1; bus.connect(master);
       // 風：だんだん強く
@@ -82,12 +83,59 @@ const Snd = (() => {
       o.connect(og); og.connect(bus); o.start(t + s0); o.stop(t + impactT + 0.05);
       noise(t + s0, 0.8, { type: 'highpass', f: 5000, q: 0.5, gain: 0.09, dest: bus });
     },
+    // 雷以外の場面の音：kind ごとに「じわじわ高まる音」を直撃（impactT 秒）まで鳴らす
+    //  room：低いうなり＋だんだん速くなる鼓動／buzz：ハチの羽音／rumble：地鳴り／wind：風／water：波／space：近づく音
+    cineOther(impactT, kind) {
+      const t = now();
+      bus = ac.createGain(); bus.gain.value = 1; bus.connect(master);
+      const ramp = (g0, g1) => { const o = ac.createGain(); o.gain.setValueAtTime(g0, t); o.gain.linearRampToValueAtTime(g1, t + impactT); o.connect(bus); return o; };
+      const loopNoise = (type, f0, f1, q) => {
+        const s = ac.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
+        const fl = ac.createBiquadFilter(); fl.type = type; fl.Q.value = q || 0.8;
+        fl.frequency.setValueAtTime(f0, t); fl.frequency.linearRampToValueAtTime(f1, t + impactT);
+        s.connect(fl); s.start(t, Math.random()); s.stop(t + impactT + 0.1); return fl;
+      };
+      const osc = (type, f0, f1) => {
+        const o = ac.createOscillator(); o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + impactT);
+        o.start(t); o.stop(t + impactT + 0.1); return o;
+      };
+      if (kind === 'room') {
+        const o = osc('sine', 52, 70), g = ramp(0.03, 0.2); o.connect(g);
+        for (let b = 0.4, gap = 0.9; b < impactT - 0.15; b += gap, gap = Math.max(0.28, gap * 0.82)) {       // 鼓動：だんだん速く強く
+          const v = 0.12 + 0.3 * (b / impactT);
+          tone(60, t + b, 0.16, { type: 'sine', gain: v, f2: 38, dest: bus }); tone(60, t + b + 0.17, 0.14, { type: 'sine', gain: v * 0.7, f2: 36, dest: bus });
+        }
+      } else if (kind === 'buzz') {
+        const o = osc('sawtooth', 150, 230), lf = ac.createOscillator(), lg = ac.createGain(), g = ramp(0.01, 0.16);
+        lf.frequency.value = 38; lg.gain.value = 0.5; lf.connect(lg); lg.connect(g.gain); lf.start(t); lf.stop(t + impactT + 0.1);
+        o.connect(g); loopNoise('bandpass', 1500, 3200, 1.5).connect(ramp(0.005, 0.07));
+      } else if (kind === 'rumble') {
+        loopNoise('lowpass', 70, 220, 0.7).connect(ramp(0.04, 0.5));
+        loopNoise('bandpass', 400, 1200, 0.6).connect(ramp(0.0, 0.1));
+      } else if (kind === 'wind') {
+        loopNoise('bandpass', 280, 900, 0.7).connect(ramp(0.03, 0.2));
+        const o = osc('sine', 90, 140); o.connect(ramp(0.0, 0.07));
+      } else if (kind === 'water') {
+        const lf = ac.createOscillator(), lg = ac.createGain(), g = ramp(0.06, 0.28);
+        lf.frequency.value = 0.8; lg.gain.value = 0.12; lf.connect(lg); lg.connect(g.gain); lf.start(t); lf.stop(t + impactT + 0.1);
+        loopNoise('bandpass', 500, 1400, 0.5).connect(g);
+        loopNoise('lowpass', 80, 160, 0.6).connect(ramp(0.0, 0.3));
+      } else {   // space
+        osc('sine', 180, 3200).connect(ramp(0.0, 0.1));
+        loopNoise('highpass', 800, 6000, 0.5).connect(ramp(0.0, 0.14));
+      }
+    },
     cineCut() { cutBus(); },
-    // 直撃：白い閃光の音。このあとの 0.5 秒は無音にする
-    impact() {
+    // 直撃。flash が白なら閃光の音（鋭く高い破裂＋轟き）、黒なら鈍い衝撃だけ。このあとの 0.5 秒は無音にする
+    impact(flash) {
       if (!ac) return;
       cutBus();
       const t = now();
+      if (flash && flash !== '#ffffff') {
+        tone(80, t, 0.5, { type: 'sine', gain: 0.6, f2: 30 });
+        noise(t, 0.5, { type: 'lowpass', f: 300, f2: 50, q: 0.7, gain: 0.6 });
+        return;
+      }
       noise(t, 0.35, { type: 'highpass', f: 1800, q: 0.5, gain: 0.7 });
       noise(t, 1.6, { type: 'lowpass', f: 220, f2: 40, q: 0.7, gain: 0.9 });
       tone(70, t, 0.9, { type: 'sine', gain: 0.5, f2: 28 });

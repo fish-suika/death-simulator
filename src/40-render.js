@@ -39,7 +39,7 @@ function drawPerson(x, y, pose, t) {
     bob = -Math.sin(u * Math.PI) * 3;
   }
   // 映像の上では、背景が暗くても見えるように白いふちを付ける
-  if (pose === 'startle' || pose === 'panic') {
+  if (pose === 'startle' || pose === 'panic' || ctx !== ctx1) {
     ctx.shadowColor = 'rgba(255,255,255,.95)'; ctx.shadowBlur = 10;
     if (pose === 'panic') ctx.translate(Math.sin(t * 61) * 0.9, 0);   // 震え
   }

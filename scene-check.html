@@ -1,0 +1,733 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><title>場面の確認</title>
+<style>body{margin:0;background:#222;color:#fff;font:11px sans-serif}#g{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;padding:3px}.c{position:relative}canvas{width:100%;display:block}span{position:absolute;left:2px;top:2px;background:#000a;padding:1px 3px}</style>
+</head><body><div id="g"></div>
+<script>
+// ===== 調整用の数値（ここだけ触れば遊びが変わる）=====
+// 世界の大きさは 幅100 × 高さ177.8（縦9:16）。長さの単位はすべてこの世界の単位
+const CFG = {
+  worldW: 100,
+  worldH: 100 * 16 / 9,
+  shareUrl: 'https://fish-suika.github.io/death-simulator/',
+
+  // 「無事」の幅（円盤全体に対する割合）。1日目が一番太く、毎日細くなる。平均 3〜4 日で死ぬ目安
+  // （Phase 1 のテストプレイで「死ぬまで何回も回すので飽きる」と言われ、6.9日→3.6日に短くした）
+  safeStart: 0.85,
+  safeStep: 0.07,
+  safeMin: 0.2,
+  safeMax: 0.97,
+
+  // 円盤
+  wheel: { cx: 50, cy: 104, R: 35 },
+  spinSecs: 2.8,        // 回り始めから止まるまで（4.6秒だと長いと言われた）
+  easePow: 3.2,         // 大きいほど最後がじわじわ遅くなる（ドキドキの主な調整）
+  turnsMin: 2,          // 最低でも何周するか（2〜3周）
+  autoNextSecs: 1.0,    // 無事で止まってから自動で翌日へ進むまで（「あしたへ」を押す手間をなくす）
+  edgeMargin: 0.004,    // 止まる位置を境目からこれ(rad)以上離す（境目での判定ぶれを防ぐ）
+  minWeight: 0.9,       // マスの重みの下限（まれな死に方も細くなりすぎないように）
+
+  // 演出
+  nearDeg: 6,           // 死のマスからこの角度以内で止まったら「ニアミス」
+  closeDeg: 22,         // この角度以内なら「あぶなかった」
+  deathCardDelay: 1.5,  // 死んでから死因カードが出るまで(秒)
+  needleKick: 0.55,     // 針が境目で弾かれる大きさ(rad)
+};
+
+// 行き先。safeBonus：その日の「無事」の幅に足す（家は安全寄り、山・海は危険寄り）
+const DESTS = [
+  { id: 'home',     name: '家', safeBonus: 0.05 },
+  { id: 'mountain', name: '山', safeBonus: -0.02 },
+  { id: 'sea',      name: '海', safeBonus: -0.03 },
+];
+
+// 死に方（実データ。出典と計算は docs/データ出典.md）。
+// n：年間の死者数（円盤のマス幅の元。weight = 1 + log10(n) で縮める）。stat/note：死因カードに出す数字と出どころ。prevent：防ぐには。
+// dest：出る行き先（any は どの行き先でも出る）。cine：全画面の場面（無い物は簡易演出）
+const DEATHS = [
+  { id: 'mochi', dest: 'home', name: 'もちを のどに つまらせる', n: 330,
+    stat: '年間 約330人', note: '65歳以上・2018〜2019年の平均（消費者庁）',
+    prevent: 'もちは 小さく切って、よくかんでから 飲みこむ',
+    near: 'もちが のどの おくを かすめた',
+    cine: { scene: 'mochi', impactT: 3.2, flash: '#000000', feet: [50, 152], scale: 1.25, sound: 'room' } },
+  { id: 'yuki', dest: 'home', name: '雪下ろしで 屋根から 落ちる', n: 80,
+    stat: '年間 約80人', note: '雪害の死者・2010〜2019年冬の平均。大半が除雪中（消防庁）',
+    prevent: '雪下ろしは ひとりでやらず、命綱と ヘルメットを つける',
+    near: '屋根の雪が ずるっと 動いた',
+    cine: { scene: 'yuki', impactT: 3, flash: '#ffffff', feet: [50, 152], scale: 1.3, sound: 'rumble' } },
+  { id: 'fugu', dest: 'home', name: 'フグの毒に あたる', n: 1.5,
+    stat: '10年で 約15人', note: '2003〜2012年（神奈川県衛生研究所の集計）',
+    prevent: 'フグは 免許のある店で。釣ったフグを 家でさばかない',
+    near: 'フグの 肝が ちらっと 見えた',
+    cine: { scene: 'fugu', impactT: 3, flash: '#000000', feet: [50, 152], scale: 1.25, sound: 'room' } },
+  { id: 'kinoko', dest: 'home', name: '毒キノコを 食べる', n: 0.3,
+    stat: '10年で 3人', note: '2012〜2021年（厚生労働省）',
+    prevent: '知らない キノコは 食べない・人にも あげない。迷ったら 捨てる',
+    near: 'あやしい キノコと めが あった',
+    cine: { scene: 'kinoko', impactT: 3.2, flash: '#000000', feet: [50, 152], scale: 1.25, sound: 'room' } },
+  { id: 'furo', dest: 'home', name: 'お風呂で おぼれる', n: 5000,
+    stat: '年間 約5,000人', note: '家庭の浴槽・2015〜2019年（人口動態統計）。交通事故より多い',
+    prevent: 'お湯は 41度以下・10分まで。入る前に 脱衣所と 浴室を あたためる。家族に ひと声かける',
+    near: 'お湯が ちょっと 熱かった',
+    cine: { scene: 'furo', impactT: 3.2, flash: '#000000', feet: [50, 150], scale: 1.25, sound: 'room' } },
+  { id: 'hachi', dest: 'mountain', name: 'ハチに さされる', n: 18,
+    stat: '年間 約18人', note: '2021〜2024年の平均（人口動態統計）',
+    prevent: '黒い服を 避け、巣を見つけたら そっと はなれる。さされたら すぐ病院へ',
+    near: 'ハチが みみもとを とおりすぎた',
+    cine: { scene: 'hachi', impactT: 3.2, flash: '#000000', feet: [50, 150], scale: 1.3, sound: 'buzz' } },
+  { id: 'hebi', dest: 'mountain', name: '毒ヘビに かまれる', n: 3.5,
+    stat: '年間 約3〜4人', note: '2018〜2019年（人口動態統計）',
+    prevent: '草むらに 手や足を つっこまない。かまれたら 動かず 救急車を',
+    near: '足もとの 落ち葉が がさっと 動いた',
+    cine: { scene: 'hebi', impactT: 3, flash: '#000000', feet: [30, 152], scale: 1.3, sound: 'room' } },
+  { id: 'nadare', dest: 'mountain', name: '雪崩に のまれる', n: 9,
+    stat: '年間 約9人', note: '1991〜2020年の30年で274人（日本雪崩ネットワーク）',
+    prevent: '雪崩の危険が高い日は 斜面に入らない。入るなら 装備と講習を',
+    near: '山の上で 雪けむりが 上がった',
+    cine: { scene: 'nadare', impactT: 3.2, flash: '#ffffff', feet: [50, 150], scale: 1.3, sound: 'rumble' } },
+  { id: 'sangaku', dest: 'mountain', name: '山で 遭難する', n: 300,
+    stat: '年間 約300人', note: '死者・行方不明者・2024年（警察庁）。原因は道迷い・転倒・滑落など',
+    prevent: '登山計画書を出し、ヘッドライトと 防寒着を持つ。道に迷ったら 沢には おりない',
+    near: '道が 二つに 分かれていた',
+    cine: { scene: 'sangaku', impactT: 3.4, flash: '#000000', feet: [50, 152], scale: 1.3, sound: 'wind' } },
+  { id: 'tsuri', dest: 'sea', name: '釣りで 海に 落ちる', n: 90,
+    stat: '年間 約90人', note: '釣り中の海中転落・2004〜2013年の平均（海上保安庁）',
+    prevent: 'ライフジャケットを着る。ひとりで行かず、荒れた日の 岩場や防波堤には 行かない',
+    near: '足もとの 岩が ぬるっと した',
+    cine: { scene: 'tsuri', impactT: 3.2, flash: '#000000', feet: [38, 152], scale: 1.3, sound: 'water' } },
+  { id: 'umi', dest: 'sea', name: '海で おぼれる', n: 372,
+    stat: '年間 約370人', note: '海の死者・行方不明者・2024年（警察庁）',
+    prevent: '流されたら 岸と平行に およぐ。ライフジャケットを着て、監視員のいる浜で',
+    near: 'あしが ふっと うきそうになった',
+    cine: { scene: 'umi', impactT: 3.2, flash: '#000000', feet: [50, 150], scale: 1.3, sound: 'water' } },
+  { id: 'rakurai', dest: 'any', name: '落雷に うたれる', n: 10,
+    stat: '年間 10人未満', note: '近年の日本（藤部 2017）',
+    prevent: '空が 暗くなったら 建物か 車の中へ。木の下には にげない',
+    near: 'とおくで ゴロゴロと なった',
+    // 全画面の場面（背景は 45-scenes.js がコードで描く）。impactT：この秒で直撃（白く暗転）。feet：ピクトグラムの足もと（世界の座標）。scale：大きさ
+    cine: { scene: 'rakurai', impactT: 3.3, flash: '#ffffff', feet: [50, 152], scale: 1.3, sound: 'storm' } },
+  // 隠し枠：図鑑が 12 種そろったときだけ円盤に出る。日本での死亡の記録が見つからない（数字は「記録 0 人」）
+  { id: 'inseki', dest: 'any', hidden: true, name: '隕石に あたる', n: 0,
+    stat: '記録 0人', note: '日本で死亡した記録は 見つからない（調べた範囲）',
+    prevent: '心配は いらない。それより お風呂に 気をつけて',
+    near: '空に 光る点が ひとつ 見えた',
+    cine: { scene: 'inseki', impactT: 3.6, flash: '#ffffff', feet: [50, 152], scale: 1.3, sound: 'space' } },
+];
+DEATHS.forEach(d => { d.weight = d.hidden ? CFG.minWeight : Math.max(CFG.minWeight, 1 + Math.log10(d.n)); });
+
+// 映像の試しプレイ用（rakurai-test.html だけで有効）。落雷だけが死のマスになり、1日目から死にやすい
+if (typeof TEST_RAKURAI !== 'undefined' && TEST_RAKURAI) {
+  DEATHS.forEach(d => { d.weight = d.id === 'rakurai' ? 10 : 0.0001; });
+  CFG.safeStart = 0.6; CFG.safeStep = 0.1;
+}
+
+// 無事の日の一言
+const SAFE_LINES = ['ふつうの 一日だった', 'なにも 起きなかった', 'ぶじに 夜をむかえた', 'いい 天気だった', 'ごはんが おいしかった'];
+const CLOSE_LINES = ['あぶなかった…', 'いま なにか すれちがった', '心臓が ドキッとした'];
+// ===== ゲームの中身（画面を使わない。verify.html でもそのまま動く）=====
+const TAU = Math.PI * 2;
+const mod = (a, m) => ((a % m) + m) % m;
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+const destOf = id => DESTS.find(d => d.id === id) || DESTS[0];
+
+// その日・その行き先の「無事」の幅（円盤の何割か）
+function safeFrac(day, dest) {
+  const base = Math.max(CFG.safeMin, CFG.safeStart - CFG.safeStep * (day - 1));
+  return Math.max(CFG.safeMin, Math.min(CFG.safeMax, base + destOf(dest).safeBonus));
+}
+
+// 図鑑まわり（画面側 65-dex.js が差し替える）。隠し枠（隕石）は、図鑑が 12 種そろうと円盤に出る
+let HIDDEN_ON = false;
+let DEX_HAS = () => false;                       // その死に方が図鑑に載っているか
+const dexOpen = () => DEATHS.filter(d => !d.hidden && !DEX_HAS(d.id)).length;   // 図鑑の空き
+const dexRegular = () => DEATHS.filter(d => !d.hidden).length;                  // 隠し枠をのぞく種類数
+
+// 円盤のマスの重み。図鑑の空きが半分以下になったら、まだ載っていない死に方を少し太くする（最大 3 倍）
+// （まれな死に方ほど出ないので、図鑑の最後が埋まらなくなるのを防ぐ）
+function wheelWeight(i) {
+  const d = DEATHS[i];
+  if (d.hidden || DEX_HAS(d.id)) return d.weight;
+  const got = dexRegular() - dexOpen(), half = dexRegular() / 2;
+  return d.weight * (1 + 2 * Math.max(0, Math.min(1, (got - half) / half)));
+}
+
+// その行き先で出る死に方（番号）。どこでも出る物（any）は どの行き先にも入る
+function destDeaths(dest) {
+  const id = destOf(dest).id, out = [];
+  DEATHS.forEach((d, i) => {
+    if (d.hidden && !HIDDEN_ON) return;
+    if (d.dest === id || d.dest === 'any') out.push(i);
+  });
+  return out;
+}
+
+// その日の円盤。円盤の上の角度 a(0〜TAU) で、[0, 無事) のあとに死に方のマスが並ぶ
+function buildWheel(day, dest) {
+  const p = safeFrac(day, dest);
+  const wedges = [{ kind: 'safe', a0: 0, a1: TAU * p }];
+  const list = destDeaths(dest);
+  const total = list.reduce((s, i) => s + wheelWeight(i), 0);
+  let a = TAU * p;
+  list.forEach(i => {
+    const w = TAU * (1 - p) * wheelWeight(i) / total;
+    wedges.push({ kind: 'death', idx: i, a0: a, a1: a + w });
+    a += w;
+  });
+  wedges[wedges.length - 1].a1 = TAU;
+  return wedges;
+}
+
+function wedgeIndexAt(wedges, a) {
+  a = mod(a, TAU);
+  for (let i = 0; i < wedges.length; i++) if (a >= wedges[i].a0 && a < wedges[i].a1) return i;
+  return wedges.length - 1;
+}
+
+// 円盤が rot だけ回っているとき、上の針の下にある円盤上の角度
+const pointerLocal = rot => mod(-Math.PI / 2 - rot, TAU);
+
+// 止まる位置を決める（境目から離す）
+function pickStopAngle(rng) {
+  let a = rng() * TAU;
+  const m = CFG.edgeMargin;
+  if (a < m) a = m;
+  if (TAU - a < m) a = TAU - m;
+  return a;
+}
+function nudgeFromEdges(wedges, a) {
+  const m = CFG.edgeMargin;
+  for (const w of wedges) {
+    const d = a - w.a0;
+    if (w.a0 > 0 && Math.abs(d) < m) a = w.a0 + (d < 0 ? -m : m);
+  }
+  return a;
+}
+
+// 無事で止まったときの、死のマス(= TAU*p 以降)までの近さ[度]と、近い側の死に方
+function nearestDeath(wedges, a) {
+  const edge = wedges[0].a1;                 // 無事の終わり = 最初の死のマスの始まり
+  const toFirst = edge - a, toLast = a;      // 最初の死のマスまで / 最後の死のマス(=TAUの手前)まで
+  if (toFirst <= toLast) return { deg: toFirst * 180 / Math.PI, idx: wedges[1].idx };
+  return { deg: toLast * 180 / Math.PI, idx: wedges[wedges.length - 1].idx };
+}
+
+const Game = {
+  reset(seed) {
+    this.rng = mulberry32(seed == null ? (Math.random() * 2147483647) | 0 : seed);
+    this.day = 1;
+    this.dest = 'home';        // 今日の行き先
+    this.phase = 'ready';      // ready → spin → safe → (next) ready … / spin → dead
+    this.rot = 0;
+    this.wedges = buildWheel(1, 'home');
+    this.plan = null;
+    this.stopA = 0;
+    this.deathIdx = -1;
+    this.near = null;          // 無事で止まったときのニアミス情報
+    this.tPhase = 0;
+    this.spinT = 0;
+  },
+
+  // 回す（行き先を選んで）。結果は先に乱数で決め、そこへ止まるように減速の曲線を逆算する
+  spin(dest) {
+    if (this.phase !== 'ready') return false;
+    if (dest) { this.dest = destOf(dest).id; this.wedges = buildWheel(this.day, this.dest); }
+    let a = pickStopAngle(this.rng);
+    a = nudgeFromEdges(this.wedges, a);
+    const target = this.wedges[wedgeIndexAt(this.wedges, a)];
+    const phi0 = pointerLocal(this.rot);
+    const turns = CFG.turnsMin + Math.floor(this.rng() * 2);
+    const delta = mod(phi0 - a, TAU) + TAU * turns;      // 回転は時計回り(rot が増える)＝針の下の角度は減っていく
+    this.plan = { rot0: this.rot, delta, a, target };
+    this.stopA = a;
+    this.spinT = 0;
+    this.phase = 'spin';
+    this.tPhase = 0;
+    return true;
+  },
+
+  step(dt) {
+    this.tPhase += dt;
+    if (this.phase !== 'spin') return;
+    this.spinT += dt;
+    const u = Math.min(1, this.spinT / CFG.spinSecs);
+    this.rot = this.plan.rot0 + this.plan.delta * (1 - Math.pow(1 - u, CFG.easePow));
+    if (u >= 1) this.finishSpin();
+  },
+
+  finishSpin() {
+    this.rot = this.plan.rot0 + this.plan.delta;
+    const w = this.plan.target;
+    this.tPhase = 0;
+    if (w.kind === 'safe') {
+      this.near = nearestDeath(this.wedges, this.plan.a);
+      this.phase = 'safe';
+    } else {
+      this.deathIdx = w.idx;
+      this.phase = 'dead';
+    }
+  },
+
+  // 無事の翌日へ
+  next() {
+    if (this.phase !== 'safe') return false;
+    this.day++;
+    this.wedges = buildWheel(this.day, this.dest);
+    this.plan = null;
+    this.near = null;
+    this.phase = 'ready';
+    this.tPhase = 0;
+    return true;
+  },
+
+  // いま針の下にあるマスの番号
+  wedgeUnderPointer() {
+    return wedgeIndexAt(this.wedges, pointerLocal(this.rot));
+  },
+};
+// ===== 死亡演出の背景（動画は使わず、全部コードで描く）=====
+// どの場面も Scenes.<id>(ctx, t, p)：ctx は世界座標（幅100×高さ177.8）の変換つき、t は経過秒、p は直撃までの進み(0〜1)。
+// ピクトグラムはこの上に 70-cine.js が重ねる。寄り・揺れも 70-cine.js が全体にかける
+const Scenes = {};
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp01 = v => Math.max(0, Math.min(1, v));
+const smooth = v => { v = clamp01(v); return v * v * (3 - 2 * v); };
+const rgbMix = (c1, c2, t) => 'rgb(' + Math.round(lerp(c1[0], c2[0], t)) + ',' + Math.round(lerp(c1[1], c2[1], t)) + ',' + Math.round(lerp(c1[2], c2[2], t)) + ')';
+
+// ぎざぎざの稲妻（中点をずらして分けていく）。枝つき
+function boltPath(rnd, x0, y0, x1, y1, spread, depth) {
+  let pts = [[x0, y0], [x1, y1]];
+  for (let d = 0; d < 5; d++) {
+    const next = [pts[0]];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      next.push([(a[0] + b[0]) / 2 + (rnd() - 0.5) * spread / (d + 1), (a[1] + b[1]) / 2 + (rnd() - 0.5) * spread * 0.25 / (d + 1)], b);
+    }
+    pts = next;
+  }
+  const out = [pts];
+  if (depth > 0) {
+    for (let i = 3; i < pts.length - 3; i += 6) {
+      if (rnd() < 0.55) {
+        const p = pts[i], dir = rnd() < 0.5 ? -1 : 1;
+        out.push(...boltPath(rnd, p[0], p[1], p[0] + dir * (6 + rnd() * 12), p[1] + 14 + rnd() * 18, 5, depth - 1));
+      }
+    }
+  }
+  return out;
+}
+function strokeBolt(ctx, paths, a) {
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  [[3.2, 0.16, '#9cc8ff'], [1.4, 0.5 * a, '#cfe6ff'], [0.55, a, '#ffffff']].forEach(([w, al, col]) => {
+    ctx.strokeStyle = col; ctx.globalAlpha = al; ctx.lineWidth = w;
+    paths.forEach((pts, k) => {
+      ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.stroke();
+    });
+  });
+  ctx.globalAlpha = 1;
+}
+
+// 落雷：のどかな野原 → 積乱雲がわき上がる → 雨と風 → 雲の中で雷が光る → 稲妻が地面に届く
+Scenes.rakurai = (() => {
+  const W = CFG.worldW, H = CFG.worldH, HZ = 128;
+  const r0 = mulberry32(7);
+  const blobs = [];
+  for (let i = 0; i < 110; i++) {
+    blobs.push({ x: 50 + (r0() - 0.5) * 120 * (0.35 + 0.65 * r0()), y: lerp(HZ - 6, 8, Math.pow(r0(), 0.85)), r: 9 + r0() * 17, d: r0() * TAU });
+  }
+  blobs.sort((a, b) => a.y - b.y);
+  const small = [[18, 30, 12], [70, 20, 9], [46, 52, 14], [84, 62, 10], [26, 78, 11]];
+  const blades = [];
+  for (let i = 0; i < 320; i++) blades.push({ x: r0() * W, y: HZ + 1 + Math.pow(r0(), 0.7) * (H - HZ), s: r0() * TAU });
+  const flashes = [[0.9, 0.14, 30], [1.55, 0.12, 66], [2.05, 0.12, 42], [2.5, 0.16, 56]];
+
+  return function (ctx, t, p) {
+    const g = smooth(p * 1.1);                    // 雲のわき上がり
+    // 空
+    const sky = ctx.createLinearGradient(0, 0, 0, HZ);
+    sky.addColorStop(0, rgbMix([64, 148, 226], [18, 24, 36], Math.pow(p, 1.1)));
+    sky.addColorStop(1, rgbMix([205, 230, 250], [98, 110, 128], p));
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, W, HZ + 1);
+    // のどかな小さい雲（嵐が来ると消える）
+    ctx.fillStyle = 'rgba(255,255,255,' + (0.9 * (1 - smooth(p * 1.6))).toFixed(3) + ')';
+    small.forEach(([x, y, r], i) => {
+      const dx = (x + t * 1.6 * (0.5 + i * 0.2)) % 130 - 15;
+      ctx.beginPath(); ctx.ellipse(dx, y, r * 1.4, r * 0.5, 0, 0, TAU); ctx.ellipse(dx + r * 0.6, y - r * 0.2, r * 0.8, r * 0.5, 0, 0, TAU); ctx.fill();
+    });
+    // 積乱雲：地平線から立ち上がる。上は明るく、底は暗い
+    const base = [150, 165, 185], top = [245, 248, 255], baseS = [20, 26, 38], topS = [92, 104, 124];
+    const cb = base.map((v, i) => lerp(v, baseS[i], p)), ct = top.map((v, i) => lerp(v, topS[i], p));
+    blobs.forEach(b => {
+      const h = (HZ - b.y) / (HZ - 8);
+      const yy = HZ - (HZ - b.y) * (0.1 + 0.9 * g);
+      const rr = b.r * (0.45 + 0.75 * g);
+      const w = Math.sin(t * 0.5 + b.d) * 1.2;
+      ctx.fillStyle = rgbMix(cb, ct, Math.min(1, h * 0.75));
+      ctx.beginPath(); ctx.arc(b.x + w, yy, rr, 0, TAU); ctx.fill();
+    });
+    // 雨のカーテン
+    const rain = ctx.createLinearGradient(0, 60, 0, HZ);
+    rain.addColorStop(0, 'rgba(60,70,86,0)'); rain.addColorStop(1, 'rgba(70,82,100,' + (0.55 * g).toFixed(3) + ')');
+    ctx.fillStyle = rain; ctx.fillRect(14, 60, 72, HZ - 60);
+    // 地面と草
+    const gr = ctx.createLinearGradient(0, HZ, 0, H);
+    gr.addColorStop(0, rgbMix([128, 156, 78], [58, 74, 52], p)); gr.addColorStop(1, rgbMix([70, 104, 48], [22, 34, 26], p));
+    ctx.fillStyle = gr; ctx.fillRect(0, HZ, W, H - HZ);
+    const wind = 0.25 + 1.7 * p;
+    ctx.lineCap = 'round';
+    blades.forEach(b => {
+      const len = 2.2 + (b.y - HZ) / (H - HZ) * 7;
+      const sw = Math.sin(t * (3 + wind) + b.x * 0.4 + b.s) * wind * len * 0.35 + wind * len * 0.25;
+      ctx.strokeStyle = rgbMix([118, 150, 64], [34, 48, 34], p * 0.8 + (b.y - HZ) / (H - HZ) * 0.2);
+      ctx.lineWidth = 0.5 + (b.y - HZ) / (H - HZ) * 0.7;
+      ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x + sw, b.y - len); ctx.stroke();
+    });
+    // 雨すじ（後半）
+    if (p > 0.45) {
+      const n = Math.floor(70 * clamp01((p - 0.45) / 0.55));
+      ctx.strokeStyle = 'rgba(210,225,245,0.35)'; ctx.lineWidth = 0.25;
+      const rr = mulberry32(Math.floor(t * 30) + 11);
+      for (let i = 0; i < n; i++) {
+        const x = rr() * W, y = rr() * H;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 2.5, y + 9); ctx.stroke();
+      }
+    }
+    // 雲の中の雷（ぱっと光る）
+    let glow = 0;
+    flashes.forEach(([t0, dur, fx]) => {
+      const u = (t - t0) / dur;
+      if (u >= 0 && u < 1) {
+        const a = 1 - u;
+        glow = Math.max(glow, a * 0.5);
+        const rg = ctx.createRadialGradient(fx, 46, 2, fx, 46, 36);
+        rg.addColorStop(0, 'rgba(230,240,255,' + (0.85 * a).toFixed(3) + ')'); rg.addColorStop(1, 'rgba(230,240,255,0)');
+        ctx.fillStyle = rg; ctx.fillRect(0, 0, W, HZ);
+        strokeBolt(ctx, boltPath(mulberry32(Math.floor(t0 * 100)), fx, 30, fx + 10, 70, 10, 1), 0.7 * a);
+      }
+    });
+    // 稲妻が地面まで届く：だんだん太く・チカチカ
+    if (t > 2.7) {
+      const rr = mulberry32(Math.floor(t * 11) + 3);
+      const gp = clamp01((t - 2.7) / 0.6);
+      const flick = 0.55 + 0.45 * ((Math.floor(t * 22) % 2) ? 1 : 0.6);
+      strokeBolt(ctx, boltPath(rr, 55, 18, 52, HZ + 6, 12, 2), flick * (0.6 + 0.4 * gp));
+      glow = Math.max(glow, 0.3 + 0.4 * gp);
+      const gg = ctx.createRadialGradient(52, HZ + 4, 1, 52, HZ + 4, 30);
+      gg.addColorStop(0, 'rgba(255,255,255,' + (0.9 * gp).toFixed(3) + ')'); gg.addColorStop(1, 'rgba(200,225,255,0)');
+      ctx.fillStyle = gg; ctx.fillRect(0, HZ - 30, W, 60);
+    }
+    if (glow > 0) { ctx.fillStyle = 'rgba(220,235,255,' + (glow * 0.35).toFixed(3) + ')'; ctx.fillRect(0, 0, W, H); }
+    // 四隅を暗く（映画のように）
+    const vg = ctx.createRadialGradient(50, 95, 30, 50, 95, 105);
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,' + (0.15 + 0.5 * p).toFixed(3) + ')');
+    ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+  };
+})();
+// ===== 死亡演出の背景（残りの 12 場面）。どれも Scenes.<id>(ctx, t, p)：t=経過秒、p=直撃までの進み(0〜1) =====
+// 部品：塗りつぶし・雲のかたまり・霧・四隅の暗さ・粒（雪・胞子・ハチなど）。どの場面も全面を塗る
+const SW = CFG.worldW, SH = CFG.worldH;
+const rgb = (r, g, b) => 'rgb(' + Math.round(r) + ',' + Math.round(g) + ',' + Math.round(b) + ')';
+function vgrad(ctx, y0, y1, c0, c1) {
+  const g = ctx.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, c0); g.addColorStop(1, c1);
+  ctx.fillStyle = g; ctx.fillRect(0, y0, SW, y1 - y0 + 1);
+}
+function dark(ctx, a) { if (a > 0) { ctx.fillStyle = 'rgba(0,0,0,' + a.toFixed(3) + ')'; ctx.fillRect(0, 0, SW, SH); } }
+function vig(ctx, a) {
+  const g = ctx.createRadialGradient(50, 95, 30, 50, 95, 105);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,' + a.toFixed(3) + ')');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, SW, SH);
+}
+function disc(ctx, x, y, r, col) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); }
+function fog(ctx, a, y0, y1, col) {
+  const g = ctx.createLinearGradient(0, y0, 0, y1);
+  g.addColorStop(0, 'rgba(' + col + ',0)'); g.addColorStop(0.5, 'rgba(' + col + ',' + a.toFixed(3) + ')'); g.addColorStop(1, 'rgba(' + col + ',0)');
+  ctx.fillStyle = g; ctx.fillRect(0, y0, SW, y1 - y0);
+}
+// 乱数で作った粒の配列
+function seeded(seed, n, f) { const r = mulberry32(seed), a = []; for (let i = 0; i < n; i++) a.push(f(r, i)); return a; }
+
+// ---- 家 ----
+// 餅：こたつの部屋。お雑煮の餅がどんどん伸びて大きくなる。部屋が暗くなる
+const mochiSteam = seeded(21, 14, r => ({ x: 36 + r() * 28, s: r(), w: r() * TAU }));
+Scenes.mochi = function (ctx, t, p) {
+  vgrad(ctx, 0, 112, rgb(238, 212, 170), rgb(205, 160, 110));
+  ctx.fillStyle = rgb(170, 110, 70); ctx.fillRect(0, 112, SW, SH - 112);            // 床
+  ctx.fillStyle = rgb(150, 92, 56); for (let i = 0; i < 9; i++) ctx.fillRect(0, 118 + i * 9, SW, 0.6);
+  ctx.fillStyle = rgb(205, 110, 60); ctx.fillRect(10, 96, 80, 40);                   // こたつ布団
+  ctx.fillStyle = rgb(160, 100, 60); ctx.fillRect(7, 88, 86, 9);                     // 天板
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(50, 88, 14, 5, 0, 0, TAU); ctx.fill();   // 椀
+  ctx.fillStyle = rgb(190, 40, 40); ctx.beginPath(); ctx.ellipse(50, 87, 11, 3.2, 0, 0, TAU); ctx.fill();
+  // 湯気
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 0.8;
+  mochiSteam.forEach(s => { const ph = (t * 0.5 + s.s) % 1; ctx.beginPath(); ctx.moveTo(s.x, 84 - ph * 6); ctx.bezierCurveTo(s.x + 3, 76 - ph * 20, s.x - 3, 64 - ph * 24, s.x + Math.sin(t + s.w) * 3, 56 - ph * 30); ctx.stroke(); });
+  // 伸びる餅
+  const g = smooth(p), top = 84 - 66 * g, sway = Math.sin(t * 2.4) * 3 * g;
+  ctx.strokeStyle = '#fffdf2'; ctx.lineCap = 'round';
+  ctx.lineWidth = lerp(7, 3.5, g); ctx.beginPath(); ctx.moveTo(50, 87); ctx.quadraticCurveTo(50 + sway * 2, (87 + top) / 2, 50 + sway, top); ctx.stroke();
+  disc(ctx, 50 + sway, top, lerp(7, 15, g), '#fffdf2');
+  ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.arc(50 + sway, top, lerp(7, 15, g) - 0.5, 0.4, 2.2); ctx.stroke();
+  vig(ctx, 0.15 + 0.55 * p); dark(ctx, 0.25 * smooth(p * 1.3 - 0.3));
+};
+
+// 雪下ろし：軒下に立つ。屋根の雪がずるずる動き、大きなかたまりが落ちてくる
+const snowFall = seeded(22, 90, r => ({ x: r() * SW, y: r() * SH, v: 8 + r() * 14, s: 0.4 + r() * 0.8 }));
+Scenes.yuki = function (ctx, t, p) {
+  vgrad(ctx, 0, SH, rgb(190, 202, 216), rgb(235, 240, 246));
+  ctx.fillStyle = rgb(214, 196, 168); ctx.fillRect(0, 62, SW, 90);                    // 家の壁
+  ctx.fillStyle = rgb(120, 100, 80); for (let i = 0; i < 8; i++) ctx.fillRect(i * 13 + 3, 78, 8, 16);  // 窓がわり
+  ctx.fillStyle = rgb(70, 70, 80); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(SW, 0); ctx.lineTo(SW, 52); ctx.lineTo(0, 64); ctx.closePath(); ctx.fill();   // 屋根
+  ctx.fillStyle = '#f7fafc'; ctx.fillRect(0, 150, SW, SH - 150);                      // 雪の地面
+  const g = smooth(p);
+  // 屋根の雪（ずり落ちる）
+  const slide = g * g * 78, rot = g * 0.35;
+  ctx.save(); ctx.translate(50, 30 + slide); ctx.rotate(-rot * 0.25);
+  ctx.fillStyle = '#fbfdff'; ctx.beginPath(); ctx.moveTo(-50 - 6, -22); ctx.lineTo(56, -22); ctx.lineTo(56 + g * 5, 22 + g * 22); ctx.quadraticCurveTo(0, 30 + g * 22, -56, 18 + g * 14); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(120,150,190,0.5)'; ctx.lineWidth = 0.7; ctx.stroke(); ctx.restore();
+  // つらら
+  ctx.fillStyle = 'rgba(230,245,255,0.9)'; for (let i = 0; i < 12; i++) { ctx.beginPath(); ctx.moveTo(i * 9 + 2, 58 + slide * 0.2); ctx.lineTo(i * 9 + 5, 58 + slide * 0.2); ctx.lineTo(i * 9 + 3.5, 66 + (i % 3) * 3 + slide * 0.2); ctx.fill(); }
+  // 雪
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  snowFall.forEach(s => { const y = (s.y + t * s.v) % SH, x = s.x + Math.sin(t + s.s * 9) * 2; ctx.beginPath(); ctx.arc(x, y, s.s, 0, TAU); ctx.fill(); });
+  vig(ctx, 0.12 + 0.4 * p);
+};
+
+// フグ：夜の台所。ライトがちらつき、フグがふくらんで目が光る
+Scenes.fugu = function (ctx, t, p) {
+  vgrad(ctx, 0, SH, rgb(14, 18, 28), rgb(30, 26, 30));
+  ctx.fillStyle = rgb(56, 48, 44); ctx.fillRect(0, 108, SW, 70);                     // カウンター
+  ctx.fillStyle = rgb(210, 180, 130); ctx.fillRect(14, 104, 72, 6);                   // まな板
+  const fl = 0.55 + 0.45 * (Math.sin(t * 37) * Math.sin(t * 23) > 0.2 ? 1 : 0.35) * (p > 0.5 ? 1 : 0.9 + 0.1 * Math.sin(t * 5));
+  // ライトの光
+  const lg = ctx.createRadialGradient(50, 98, 2, 50, 98, 55);
+  lg.addColorStop(0, 'rgba(255,240,200,' + (0.55 * fl).toFixed(3) + ')'); lg.addColorStop(1, 'rgba(255,240,200,0)');
+  ctx.fillStyle = lg; ctx.fillRect(0, 40, SW, 110);
+  // フグ
+  const s = 1 + 0.5 * smooth(p);
+  ctx.save(); ctx.translate(50, 94); ctx.scale(s, s);
+  ctx.fillStyle = rgb(226, 214, 176); ctx.beginPath(); ctx.ellipse(0, 0, 17, 12, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(15, 0); ctx.lineTo(27, -7); ctx.lineTo(27, 7); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = rgb(120, 110, 92); [[-6, -6, 2.4], [2, -8, 2], [8, -3, 2.2], [-1, -3, 1.6]].forEach(([x, y, r]) => disc(ctx, x, y, r, rgb(120, 110, 92)));
+  ctx.fillStyle = rgb(236, 226, 200); ctx.beginPath(); ctx.ellipse(-2, 7, 11, 4, 0, 0, TAU); ctx.fill();
+  ctx.strokeStyle = rgb(120, 110, 92); ctx.lineWidth = 0.8; for (let i = 0; i < 9; i++) { const a = Math.PI * (0.1 + i * 0.1) * 1.6 + 3.3; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 16, Math.sin(a) * 11); ctx.lineTo(Math.cos(a) * (19 + 3 * p), Math.sin(a) * (14 + 3 * p)); ctx.stroke(); }
+  disc(ctx, -10, -3, 3.2, '#fff'); disc(ctx, -10, -3, 1.6, '#111');
+  const eg = clamp01((p - 0.5) / 0.5); if (eg > 0) { disc(ctx, -10, -3, 3.6, 'rgba(255,60,40,' + (0.8 * eg).toFixed(3) + ')'); disc(ctx, -10, -3, 1.6, '#111'); }
+  ctx.restore();
+  vig(ctx, 0.35 + 0.5 * p);
+};
+
+// 毒キノコ：うす暗い森。きれいなキノコがほのかに光り、胞子が漂い、霧が濃くなる
+const sporeP = seeded(24, 50, r => ({ x: r() * SW, y: r() * SH, s: 0.3 + r() * 0.7, w: r() * TAU }));
+Scenes.kinoko = function (ctx, t, p) {
+  vgrad(ctx, 0, 130, rgb(20, 34, 30), rgb(44, 70, 56));
+  const tr = seeded(25, 9, r => ({ x: r() * SW, w: 4 + r() * 6, c: 20 + r() * 20 }));
+  tr.forEach(o => { ctx.fillStyle = rgb(o.c, o.c + 16, o.c + 8); ctx.fillRect(o.x, 0, o.w, 135); });
+  vgrad(ctx, 128, SH, rgb(46, 62, 36), rgb(24, 34, 22));
+  fog(ctx, 0.25 + 0.4 * p, 70, 150, '170,200,180');
+  const g = smooth(p), gl = 0.35 + 0.35 * Math.sin(t * 3) * 0.3 + 0.5 * g;
+  const cg = ctx.createRadialGradient(50, 140, 2, 50, 140, 38 + 20 * g);
+  cg.addColorStop(0, 'rgba(255,150,210,' + gl.toFixed(3) + ')'); cg.addColorStop(1, 'rgba(255,150,210,0)');
+  ctx.fillStyle = cg; ctx.fillRect(0, 90, SW, 80);
+  [[40, 142, 0.9], [50, 138, 1.3], [61, 143, 0.8], [33, 146, 0.6], [68, 147, 0.55]].forEach(([x, y, k]) => {
+    const sc = k * (1 + 0.5 * g);
+    ctx.fillStyle = rgb(230, 225, 205); ctx.fillRect(x - 1.6 * sc, y - 4 * sc, 3.2 * sc, 8 * sc);
+    ctx.fillStyle = rgb(210, 60, 120); ctx.beginPath(); ctx.ellipse(x, y - 4 * sc, 8 * sc, 5 * sc, 0, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = '#fff'; [[-3, -6], [2, -7], [5, -5]].forEach(([dx, dy]) => disc(ctx, x + dx * sc, y + dy * sc, 0.9 * sc, '#fff'));
+  });
+  ctx.fillStyle = 'rgba(255,200,240,0.7)';
+  sporeP.forEach(s => { const y = (s.y - t * 3 * s.s + SH) % SH, x = s.x + Math.sin(t * 0.8 + s.w) * 4; ctx.beginPath(); ctx.arc(x, y, 0.5 * s.s + 0.3, 0, TAU); ctx.fill(); });
+  vig(ctx, 0.3 + 0.5 * p);
+};
+
+// お風呂：湯気で画面が真っ白になっていく。のぼせて赤くなる
+const bathSteam = seeded(26, 26, r => ({ x: r() * SW, y: 40 + r() * 120, r: 8 + r() * 16, s: r(), w: r() * TAU }));
+Scenes.furo = function (ctx, t, p) {
+  vgrad(ctx, 0, 120, rgb(176, 208, 218), rgb(150, 188, 200));
+  ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 0.5;
+  for (let x = 0; x <= SW; x += 12) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 120); ctx.stroke(); }
+  for (let y = 0; y <= 120; y += 12) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(SW, y); ctx.stroke(); }
+  ctx.fillStyle = rgb(236, 240, 242); ctx.beginPath(); ctx.moveTo(0, 118); ctx.lineTo(SW, 118); ctx.lineTo(SW, SH); ctx.lineTo(0, SH); ctx.closePath(); ctx.fill();  // 浴槽
+  vgrad(ctx, 128, SH, rgb(120, 190, 220), rgb(80, 160, 200));                        // お湯
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 0.6;
+  for (let i = 0; i < 6; i++) { ctx.beginPath(); for (let x = 0; x <= SW; x += 4) ctx.lineTo(x, 134 + i * 7 + Math.sin(x * 0.2 + t * 2 + i) * 1); ctx.stroke(); }
+  const g = smooth(p);
+  bathSteam.forEach(s => {
+    const ph = (t * 0.25 + s.s) % 1, y = s.y - ph * 40 * (0.5 + g), x = s.x + Math.sin(t * 0.7 + s.w) * 6;
+    const gr = ctx.createRadialGradient(x, y, 1, x, y, s.r * (1 + g));
+    gr.addColorStop(0, 'rgba(255,255,255,' + (0.18 + 0.4 * g).toFixed(3) + ')'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = gr; ctx.fillRect(x - s.r * 2, y - s.r * 2, s.r * 4, s.r * 4);
+  });
+  ctx.fillStyle = 'rgba(255,255,255,' + (0.45 * g).toFixed(3) + ')'; ctx.fillRect(0, 0, SW, SH);
+  ctx.fillStyle = 'rgba(255,90,70,' + (0.3 * g * g).toFixed(3) + ')'; ctx.fillRect(0, 0, SW, SH);   // のぼせ
+  vig(ctx, 0.15 + 0.5 * p);
+};
+
+// ---- 山 ----
+// ハチ：夏の山道。ハチの群れが寄ってきて、画面をうめる
+const bees = seeded(31, 70, r => ({ sx: 70 + r() * 60, sy: -10 + r() * 90, d: r() * 1.6, w: r() * TAU, k: 0.6 + r() * 0.8 }));
+Scenes.hachi = function (ctx, t, p) {
+  vgrad(ctx, 0, 100, rgb(96, 176, 232), rgb(200, 232, 248));
+  [[rgb(120, 168, 120), 88, 16], [rgb(86, 140, 90), 100, 22], [rgb(60, 112, 66), 112, 20]].forEach(([c, y, h], i) => { ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(0, y); for (let x = 0; x <= SW; x += 10) ctx.lineTo(x, y - Math.sin(x * 0.07 + i * 2) * h * 0.5); ctx.lineTo(SW, SH); ctx.lineTo(0, SH); ctx.fill(); });
+  vgrad(ctx, 122, SH, rgb(168, 130, 88), rgb(120, 90, 60));                           // 道
+  ctx.fillStyle = rgb(70, 130, 60); for (let i = 0; i < 40; i++) { const x = (i * 37) % SW; ctx.fillRect(x, 122 + (i * 13) % 6, 0.8, 5); }
+  const tx = 50, ty = 120;
+  bees.forEach(b => {
+    const u = clamp01((p * 1.15 - b.d * 0.35) / 0.65), e = u * u * (3 - 2 * u);
+    const x = lerp(b.sx, tx + Math.sin(b.w + t * 6) * 10 * b.k, e) + Math.sin(t * 9 + b.w) * 1.2, y = lerp(b.sy, ty + Math.cos(b.w * 2 + t * 7) * 14 * b.k, e) + Math.cos(t * 11 + b.w) * 1.2;
+    const s = 0.8 + 1.6 * e * b.k;
+    ctx.fillStyle = '#1a1a1a'; ctx.beginPath(); ctx.ellipse(x, y, 1.6 * s, 1.1 * s, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ffcc00'; ctx.fillRect(x - 0.4 * s, y - 1 * s, 0.7 * s, 2 * s);
+    ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.ellipse(x - 0.2 * s, y - 1.3 * s, 1 * s, 0.6 * s, Math.sin(t * 60 + b.w) * 0.5, 0, TAU); ctx.fill();
+  });
+  dark(ctx, 0.5 * smooth((p - 0.55) / 0.45)); vig(ctx, 0.1 + 0.4 * p);
+};
+
+// 毒ヘビ：足もとの落ち葉。ヘビが横からすべってくる
+const leaves = seeded(32, 60, r => ({ x: r() * SW, y: 100 + r() * 78, a: r() * TAU, k: 2 + r() * 3, c: r() }));
+Scenes.hebi = function (ctx, t, p) {
+  vgrad(ctx, 0, 100, rgb(40, 64, 40), rgb(74, 102, 60));
+  ctx.fillStyle = rgb(30, 50, 32); for (let i = 0; i < 6; i++) ctx.fillRect(i * 19 + 4, 0, 7, 105);
+  vgrad(ctx, 100, SH, rgb(96, 70, 40), rgb(60, 44, 28));
+  leaves.forEach(l => { ctx.fillStyle = l.c < 0.4 ? rgb(150, 90, 40) : (l.c < 0.7 ? rgb(176, 130, 50) : rgb(110, 70, 36)); ctx.save(); ctx.translate(l.x, l.y); ctx.rotate(l.a); ctx.beginPath(); ctx.ellipse(0, 0, l.k, l.k * 0.5, 0, 0, TAU); ctx.fill(); ctx.restore(); });
+  // ヘビ：右から体をくねらせて進む
+  const head = lerp(128, 50, smooth(Math.min(1, p * 1.15))), N = 60, wid = 5.2 + 2.4 * p;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (let pass = 0; pass < 2; pass++) {
+    ctx.strokeStyle = pass === 0 ? '#2a2f1c' : rgb(110, 120, 56); ctx.lineWidth = pass === 0 ? wid + 1.2 : wid;
+    ctx.beginPath();
+    for (let i = 0; i <= N; i++) { const x = head + i * 2.2, y = 150 + Math.sin(i * 0.28 - t * 5) * 6 * (0.4 + i / N * 0.6); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.stroke();
+  }
+  ctx.strokeStyle = rgb(70, 60, 30); ctx.lineWidth = 1; ctx.beginPath();
+  for (let i = 4; i <= N; i += 6) { const x = head + i * 2.2, y = 150 + Math.sin(i * 0.28 - t * 5) * 6 * (0.4 + i / N * 0.6); ctx.moveTo(x, y - wid / 2); ctx.lineTo(x, y + wid / 2); } ctx.stroke();
+  const hy = 150 + Math.sin(-t * 5) * 2.4;
+  ctx.fillStyle = rgb(120, 130, 60); ctx.beginPath(); ctx.ellipse(head - 1, hy, 4.6, 3.4, 0, 0, TAU); ctx.fill();
+  disc(ctx, head - 1.5, hy - 1.2, 0.9, '#ffd700'); disc(ctx, head - 1.5, hy - 1.2, 0.4, '#111');
+  if (Math.sin(t * 12) > 0) { ctx.strokeStyle = '#d02020'; ctx.lineWidth = 0.5; ctx.beginPath(); ctx.moveTo(head - 5, hy); ctx.lineTo(head - 9, hy); ctx.lineTo(head - 10.5, hy - 1.2); ctx.moveTo(head - 9, hy); ctx.lineTo(head - 10.5, hy + 1.2); ctx.stroke(); }
+  vig(ctx, 0.25 + 0.45 * p);
+};
+
+// 雪崩：雪山の斜面。上から白い雪煙のかたまりが、どんどん大きくなって降りてくる
+const sn = seeded(33, 80, r => ({ x: r() * 120 - 10, y: r(), r: 6 + r() * 14, w: r() * TAU, v: 0.6 + r() * 0.8 }));
+Scenes.nadare = function (ctx, t, p) {
+  vgrad(ctx, 0, 90, rgb(92, 150, 220), rgb(190, 222, 246));
+  ctx.fillStyle = rgb(245, 248, 252); ctx.beginPath(); ctx.moveTo(-5, 100); ctx.lineTo(40, 14); ctx.lineTo(70, 54); ctx.lineTo(105, 8); ctx.lineTo(105, 120); ctx.closePath(); ctx.fill();   // 山
+  ctx.fillStyle = rgb(196, 214, 236); ctx.beginPath(); ctx.moveTo(40, 14); ctx.lineTo(70, 54); ctx.lineTo(56, 110); ctx.lineTo(30, 60); ctx.closePath(); ctx.fill();   // 山の影
+  vgrad(ctx, 100, SH, rgb(236, 242, 250), rgb(206, 220, 238));                         // 雪の斜面
+  ctx.strokeStyle = 'rgba(150,170,200,0.5)'; ctx.lineWidth = 0.5; for (let i = 0; i < 7; i++) { ctx.beginPath(); ctx.moveTo(10 + i * 14, 178); ctx.lineTo(30 + i * 9, 110); ctx.stroke(); }
+  const g = smooth(p), front = lerp(-20, 118, g * g);
+  sn.forEach(b => {
+    const y = front - b.y * 70 * (0.4 + g) + Math.sin(t * 3 + b.w) * 2, r = b.r * (0.8 + 1.4 * g);
+    if (y < -r) return;
+    const gr = ctx.createRadialGradient(b.x, y, r * 0.1, b.x, y, r);
+    gr.addColorStop(0, 'rgba(255,255,255,0.97)'); gr.addColorStop(1, 'rgba(235,242,252,0.0)');
+    ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(b.x, y, r, 0, TAU); ctx.fill();
+  });
+  const mass = ctx.createLinearGradient(0, front - 40, 0, front + 30); mass.addColorStop(0, 'rgba(255,255,255,0)'); mass.addColorStop(1, 'rgba(255,255,255,' + (0.85 * g).toFixed(3) + ')');
+  ctx.fillStyle = mass; ctx.fillRect(0, 0, SW, SH);
+  vig(ctx, 0.1 + 0.3 * p);
+};
+
+// 山の遭難：夕ぐれの尾根。霧が出て、道が二つに分かれ、暗くなる
+Scenes.sangaku = function (ctx, t, p) {
+  vgrad(ctx, 0, 110, rgb(lerp(110, 22, p), lerp(160, 18, p), lerp(210, 40, p)), rgb(lerp(250, 70, p), lerp(190, 40, p), lerp(120, 60, p)));
+  [[rgb(86, 100, 120), 70, 30], [rgb(58, 72, 92), 88, 26], [rgb(34, 46, 62), 104, 22]].forEach(([c, y, h], i) => {
+    ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(0, SH); ctx.lineTo(0, y);
+    for (let x = 0; x <= SW; x += 6) ctx.lineTo(x, y - Math.abs(Math.sin(x * 0.045 + i * 1.7)) * h);
+    ctx.lineTo(SW, SH); ctx.fill();
+  });
+  vgrad(ctx, 112, SH, rgb(70, 78, 56), rgb(36, 40, 30));
+  ctx.strokeStyle = rgb(206, 190, 150); ctx.lineCap = 'round'; ctx.lineWidth = 5;                         // 道（二手に分かれる）
+  ctx.beginPath(); ctx.moveTo(50, 178); ctx.lineTo(50, 150); ctx.stroke();
+  ctx.lineWidth = 3.2; ctx.beginPath(); ctx.moveTo(50, 150); ctx.quadraticCurveTo(36, 134, 22, 116); ctx.moveTo(50, 150); ctx.quadraticCurveTo(64, 134, 84, 118); ctx.stroke();
+  fog(ctx, 0.3 + 0.5 * p, 60, 150, '210,218,226');
+  fog(ctx, 0.2 + 0.45 * p, 110, 178, '210,218,226');
+  if (p > 0.6) { ctx.fillStyle = 'rgba(255,255,255,' + (0.9 * (p - 0.6)).toFixed(3) + ')'; [[18, 14], [60, 22], [80, 10], [35, 30], [90, 36]].forEach(([x, y]) => ctx.fillRect(x, y, 0.8, 0.8)); }
+  dark(ctx, 0.5 * smooth((p - 0.3) / 0.7)); vig(ctx, 0.2 + 0.4 * p);
+};
+
+// ---- 海 ----
+// 釣り：夕ぐれの防波堤。大きな波がせり上がってくる
+const spray = seeded(41, 40, r => ({ x: r() * SW, s: r(), v: 10 + r() * 18 }));
+Scenes.tsuri = function (ctx, t, p) {
+  vgrad(ctx, 0, 96, rgb(lerp(250, 30, p * 0.8), lerp(170, 24, p * 0.8), lerp(120, 50, p * 0.8)), rgb(lerp(255, 120, p * 0.8), lerp(214, 70, p * 0.8), lerp(150, 90, p * 0.8)));
+  disc(ctx, 78, 84, 9, 'rgba(255,230,170,' + (0.9 * (1 - p)).toFixed(3) + ')');
+  vgrad(ctx, 90, 140, rgb(40, 96, 120), rgb(14, 40, 64));                             // 海
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 0.5; for (let i = 0; i < 8; i++) { ctx.beginPath(); for (let x = 0; x <= SW; x += 5) ctx.lineTo(x, 96 + i * 5 + Math.sin(x * 0.15 + t * 1.5 + i) * 1.2); ctx.stroke(); }
+  const g = smooth(p), wy = lerp(140, 24, g);                                          // 波
+  ctx.fillStyle = rgb(18, 64, 96); ctx.beginPath(); ctx.moveTo(-5, 150); ctx.lineTo(-5, wy + 18);
+  for (let x = -5; x <= 105; x += 5) ctx.lineTo(x, wy + Math.sin(x * 0.12 + t * 2) * 3 + Math.max(0, (x - 40) * 0.25) * g);
+  ctx.lineTo(105, 150); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.85)'; for (let x = -5; x <= 105; x += 5) { ctx.beginPath(); ctx.arc(x, wy + Math.sin(x * 0.12 + t * 2) * 3 + Math.max(0, (x - 40) * 0.25) * g, 2.8, 0, TAU); ctx.fill(); }
+  ctx.fillStyle = rgb(120, 124, 130); ctx.fillRect(0, 138, SW, SH - 138);              // 防波堤
+  ctx.fillStyle = rgb(150, 154, 160); ctx.fillRect(0, 138, SW, 4);
+  ctx.fillStyle = 'rgba(255,255,255,0.8)'; spray.forEach(s => { const y = 138 - ((t * s.v + s.s * 60) % 60) * g, x = s.x; if (g > 0.15) ctx.fillRect(x, y, 0.7, 0.7); });
+  dark(ctx, 0.35 * g); vig(ctx, 0.15 + 0.4 * p);
+};
+
+// 海で溺れる：晴れた浜。波打ち際の波が沖へ引いていく（離岸流）。海の色が濃くなる
+Scenes.umi = function (ctx, t, p) {
+  vgrad(ctx, 0, 70, rgb(86, 170, 236), rgb(190, 228, 250));
+  const g = smooth(p);
+  vgrad(ctx, 70, 128, rgb(lerp(60, 14, g), lerp(190, 74, g), lerp(210, 120, g)), rgb(lerp(30, 8, g), lerp(130, 50, g), lerp(180, 90, g)));
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 0.5;
+  for (let i = 0; i < 12; i++) { const y = 74 + i * 4.5, x0 = ((t * (6 + g * 24) + i * 23) % 120) - 10; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x0 + 8, y); ctx.stroke(); }
+  ctx.fillStyle = rgb(160, 120, 90); ctx.fillRect(0, 122, 6, 2);
+  vgrad(ctx, 124, SH, rgb(236, 214, 170), rgb(206, 178, 130));                         // 砂浜
+  // 引いていく波（岸から沖へ）
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  for (let k = 0; k < 4; k++) { const ph = (t * (0.5 + g * 1.1) + k / 4) % 1, y = 128 - ph * 52; ctx.beginPath(); for (let x = 0; x <= SW; x += 4) ctx.lineTo(x, y + Math.sin(x * 0.2 + k) * 1.4); ctx.lineTo(SW, y + 2.4); ctx.lineTo(0, y + 2.4); ctx.fill(); }
+  // 沖へのびる暗い筋（離岸流）
+  const rip = ctx.createLinearGradient(0, 70, 0, 130); rip.addColorStop(0, 'rgba(10,40,70,0)'); rip.addColorStop(1, 'rgba(10,40,70,' + (0.5 * g).toFixed(3) + ')');
+  ctx.fillStyle = rip; ctx.beginPath(); ctx.moveTo(36, 130); ctx.lineTo(64, 130); ctx.lineTo(54, 70); ctx.lineTo(46, 70); ctx.fill();
+  dark(ctx, 0.3 * g); vig(ctx, 0.12 + 0.4 * p);
+};
+
+// ---- 空 ----
+// 隕石（隠し枠）：夜空の星。光る点がみるみる大きくなり、火の玉になる。一番派手
+const stars = seeded(51, 110, r => ({ x: r() * SW, y: r() * 130, s: 0.3 + r() * 0.8, w: r() * TAU }));
+Scenes.inseki = function (ctx, t, p) {
+  vgrad(ctx, 0, SH, rgb(6, 8, 24), rgb(22, 24, 52));
+  stars.forEach(s => { ctx.fillStyle = 'rgba(255,255,255,' + (0.55 + 0.4 * Math.sin(t * 2 + s.w)).toFixed(3) + ')'; ctx.beginPath(); ctx.arc(s.x, s.y, s.s * 0.6, 0, TAU); ctx.fill(); });
+  ctx.fillStyle = rgb(10, 12, 20); ctx.beginPath(); ctx.moveTo(0, 150); for (let x = 0; x <= SW; x += 8) ctx.lineTo(x, 142 - Math.abs(Math.sin(x * 0.06)) * 18); ctx.lineTo(SW, SH); ctx.lineTo(0, SH); ctx.fill();
+  const g = p * p, x = lerp(80, 52, p), y = lerp(8, 118, g), r = lerp(0.8, 20, g);
+  // 尾
+  const tg = ctx.createLinearGradient(x + 34 * (1 - p) + 8, y - 70 * (1 - p) - 10, x, y);
+  tg.addColorStop(0, 'rgba(255,170,60,0)'); tg.addColorStop(1, 'rgba(255,200,120,' + (0.9 * Math.min(1, p * 1.5)).toFixed(3) + ')');
+  ctx.strokeStyle = tg; ctx.lineCap = 'round'; ctx.lineWidth = r * 1.6;
+  ctx.beginPath(); ctx.moveTo(x + 60 * (1 - p) + 10, y - 100 * (1 - p) - 12); ctx.lineTo(x, y); ctx.stroke();
+  const gl = ctx.createRadialGradient(x, y, r * 0.2, x, y, r * 3.2);
+  gl.addColorStop(0, 'rgba(255,250,220,1)'); gl.addColorStop(0.35, 'rgba(255,170,60,0.6)'); gl.addColorStop(1, 'rgba(255,100,20,0)');
+  ctx.fillStyle = gl; ctx.fillRect(0, 0, SW, SH);
+  disc(ctx, x, y, r, rgb(255, 244, 200));
+  ctx.fillStyle = 'rgba(255,230,190,' + (0.35 * g).toFixed(3) + ')'; ctx.fillRect(0, 0, SW, SH);   // 空全体が明るくなる
+  vig(ctx, 0.25 * (1 - p));
+};
+// 開発用：全場面を、進み 0.15 / 0.55 / 0.97 で並べて確認する（?from=0&to=6 で行を絞る）
+(function () {
+  const q = new URLSearchParams(location.search), from = +(q.get('from') || 0), to = +(q.get('to') || 99);
+  const g = document.getElementById('g'), list = DEATHS.filter(d => d.cine && Scenes[d.cine.scene]).slice(from, to);
+  list.forEach(d => {
+    [0.15, 0.55, 0.97].forEach(p => {
+      const w = document.createElement('div'); w.className = 'c';
+      const c = document.createElement('canvas'); c.width = 150; c.height = Math.round(150 * 16 / 9);
+      const x = c.getContext('2d'); x.setTransform(1.5, 0, 0, 1.5, 0, 0);
+      try { Scenes[d.cine.scene](x, p * d.cine.impactT, p); } catch (e) { x.fillStyle = '#f00'; x.fillRect(0, 0, 100, 178); console.error(d.id, e); }
+      x.fillStyle = '#1a1a1a'; x.strokeStyle = '#fff'; x.lineWidth = 0.8;
+      x.beginPath(); x.arc(d.cine.feet[0], d.cine.feet[1] - 24 * d.cine.scale, 3, 0, TAU); x.fill(); x.stroke();      // 頭の位置の目印
+      x.fillRect(d.cine.feet[0] - 2, d.cine.feet[1] - 20 * d.cine.scale, 4, 20 * d.cine.scale);
+      const s = document.createElement('span'); s.textContent = d.id + ' ' + p; w.appendChild(c); w.appendChild(s); g.appendChild(w);
+    });
+  });
+})();
+</script>
+</body>
+</html>

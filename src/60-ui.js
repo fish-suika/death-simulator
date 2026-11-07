@@ -104,6 +104,7 @@ function showCard() {
   cv.style.filter = '';
   $('result').classList.add('show');
   Snd.card();
+  shareBlob = null; makeShareImage(b => { shareBlob = b; });   // 共有用の画像を先に作っておく（タップの直後に共有できるように）
 }
 
 function frame(ts) {

@@ -1,5 +1,6 @@
 // ===== 起動 =====
 dexInit();
+shareInit();
 Game.reset();
 resize();
 bindUI();
