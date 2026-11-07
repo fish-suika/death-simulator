@@ -1,6 +1,7 @@
 // ===== 描画（Canvas 2D。画像素材なし）=====
 const $ = id => document.getElementById(id);
-const cv = $('cv'), ctx = cv.getContext('2d');
+const cv = $('cv'), ctx1 = cv.getContext('2d');
+let ctx = ctx1;   // 映像の上のキャンバスに描くときだけ一時的に差し替える（70-cine.js）
 let DPR = 1, VW = 0, VH = 0, S = 1, OX = 0, OY = 0, stripePat = null;
 
 // 見た目だけの状態（針のはね・光の点滅）
@@ -37,6 +38,11 @@ function drawPerson(x, y, pose, t) {
     ang = (Math.PI / 2) * (1 - Math.pow(1 - u, 2));
     bob = -Math.sin(u * Math.PI) * 3;
   }
+  // 映像の上では、背景が暗くても見えるように白いふちを付ける
+  if (pose === 'startle' || pose === 'panic') {
+    ctx.shadowColor = 'rgba(255,255,255,.95)'; ctx.shadowBlur = 10;
+    if (pose === 'panic') ctx.translate(Math.sin(t * 61) * 0.9, 0);   // 震え
+  }
   ctx.translate(0, bob);
   ctx.rotate(ang);
   ctx.strokeStyle = ctx.fillStyle = '#1a1a1a';
@@ -48,12 +54,35 @@ function drawPerson(x, y, pose, t) {
   ctx.beginPath();
   if (pose === 'cheer') { ctx.moveTo(-3, -13); ctx.lineTo(-7.5, -21); ctx.moveTo(3, -13); ctx.lineTo(7.5, -21); }
   else if (pose === 'down') { ctx.moveTo(-3, -12); ctx.lineTo(-8, -13); ctx.moveTo(3, -12); ctx.lineTo(8, -14); }
+  else if (pose === 'startle') { ctx.moveTo(-3.4, -12.5); ctx.lineTo(-8.5, -9); ctx.moveTo(3.4, -12.5); ctx.lineTo(8.5, -9); }
+  else if (pose === 'panic') {                              // 両手をバタバタ
+    const w = Math.sin(t * 24) * 3;
+    ctx.moveTo(-3.2, -13); ctx.lineTo(-8 - w * 0.3, -21 + w); ctx.moveTo(3.2, -13); ctx.lineTo(8 + w * 0.3, -21 - w);
+  }
   else { ctx.moveTo(-3.4, -12.5); ctx.lineTo(-6.8, -6); ctx.moveTo(3.4, -12.5); ctx.lineTo(6.8, -6); }
   ctx.stroke();
   ctx.lineWidth = 3;                                       // 脚
   ctx.beginPath();
-  ctx.moveTo(-1.6, -6); ctx.lineTo(-3.8, 3); ctx.moveTo(1.6, -6); ctx.lineTo(3.8, 3);
+  if (pose === 'panic') {
+    const s = Math.sin(t * 20) * 1.6;
+    ctx.moveTo(-1.6, -6); ctx.lineTo(-4.6 + s, 3); ctx.moveTo(1.6, -6); ctx.lineTo(4.6 - s, 3);
+  } else {
+    ctx.moveTo(-1.6, -6); ctx.lineTo(-3.8, 3); ctx.moveTo(1.6, -6); ctx.lineTo(3.8, 3);
+  }
   ctx.stroke();
+  ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
+  if (pose === 'startle') {                                // 頭の上に注意標識の「！」
+    ctx.fillStyle = '#ffcc00'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, -35); ctx.lineTo(5, -26.5); ctx.lineTo(-5, -26.5); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#1a1a1a'; ctx.fillRect(-0.55, -33, 1.1, 3.6); circle(0, -27.9, 0.7); ctx.fill();
+  }
+  if (pose === 'panic') {                                  // 汗のしずく
+    ctx.fillStyle = '#bfe6ff'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 0.5;
+    for (let i = 0; i < 3; i++) {
+      const ph = (t * 3 + i / 3) % 1, side = i % 2 ? 1 : -1;
+      circle(side * (5 + ph * 7), -24 + ph * 9, 1.1 * (1 - ph * 0.4)); ctx.fill(); ctx.stroke();
+    }
+  }
   if (pose === 'down') {                                   // 天使の輪
     ctx.strokeStyle = '#e0a800'; ctx.lineWidth = 1.2;
     ctx.beginPath(); ctx.ellipse(0, -27 + Math.sin(Fx.time * 4) * 0.5, 4.2, 1.5, 0, 0, TAU); ctx.stroke();
@@ -133,7 +162,7 @@ function render(dt) {
   ctx.fillStyle = '#fbf8ee'; ctx.fillRect(0, 0, CFG.worldW, CFG.worldH);
 
   drawWheel();
-  const dead = Game.phase === 'dead', safe = Game.phase === 'safe';
+  const dead = Game.phase === 'dead' && !Cine.holdMain, safe = Game.phase === 'safe';
   drawPerson(dead ? 44 : 50, 44, dead ? 'down' : (safe ? 'cheer' : 'stand'), dead || safe ? Game.tPhase : 0);
 
   // 死亡の瞬間だけ赤

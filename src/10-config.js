@@ -34,9 +34,17 @@ const DEATHS = [
   { id: 'hachi',    name: 'ハチに さされる',           n: 20,   near: 'ハチが みみもとを とおりすぎた' },
   { id: 'rakuseki', name: '落石に あたる',             n: 5,    near: 'ちいさな いしが ころがってきた' },
   { id: 'kinoko',   name: '毒キノコを たべる',         n: 4,    near: 'あやしい キノコと めが あった' },
-  { id: 'rakurai',  name: '落雷に うたれる',           n: 3,    near: 'とおくで ゴロゴロと なった' },
+  { id: 'rakurai',  name: '落雷に うたれる',           n: 3,    near: 'とおくで ゴロゴロと なった',
+    // 全画面の映像（Phase 2 の試作）。impactT：映像のこの秒で直撃（白く暗転）。feet：ピクトグラムの足もと（世界の座標）。scale：大きさ
+    cine: { src: 'media/rakurai.mp4', impactT: 3.3, flash: '#ffffff', feet: [50, 152], scale: 1.3 } },
 ];
 DEATHS.forEach(d => { d.weight = 1 + Math.log10(d.n); });
+
+// 映像の試しプレイ用（rakurai-test.html だけで有効）。落雷だけが死のマスになり、1日目から死にやすい
+if (typeof TEST_RAKURAI !== 'undefined' && TEST_RAKURAI) {
+  DEATHS.forEach(d => { d.weight = d.id === 'rakurai' ? 10 : 0.0001; });
+  CFG.safeStart = 0.6; CFG.safeStep = 0.1;
+}
 
 // 無事の日の一言
 const SAFE_LINES = ['ふつうの 一日だった', 'なにも 起きなかった', 'ぶじに 夜をむかえた', 'いい 天気だった', 'ごはんが おいしかった'];

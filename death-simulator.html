@@ -36,6 +36,17 @@ body{display:flex;align-items:center;justify-content:center}
 #go:active{transform:translateY(1cqw);box-shadow:0 .4cqw 0 #1a1a1a}
 #go.hide{visibility:hidden}
 
+/* 死亡演出：全画面の映像（動画の上のキャンバスにピクトグラム。寄り・揺れは #cineInner をまとめて動かす） */
+#cine{position:absolute;inset:0;z-index:20;overflow:hidden;background:#000;display:none;pointer-events:auto}
+#cine.show{display:block;animation:cfade .3s both}
+#cine.out{animation:cout .4s both}
+@keyframes cfade{from{opacity:0}to{opacity:1}}
+@keyframes cout{from{opacity:1}to{opacity:0}}
+#cineInner{position:absolute;inset:0;transform-origin:50% 78%;will-change:transform}
+#vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+#cv2{position:absolute;inset:0;width:100%;height:100%}
+#cineFlash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+
 /* 死因カード：注意標識 */
 #result{position:absolute;left:8cqw;right:8cqw;top:60cqw;z-index:30;
   background:#ffcc00;border:1.4cqw solid #1a1a1a;border-radius:3cqw;overflow:hidden;
@@ -58,6 +69,10 @@ body{display:flex;align-items:center;justify-content:center}
   <div id="hdr"><span id="dayNo">1日目</span><span id="best"></span></div>
   <div id="msg"></div>
   <button id="go" class="btn">まわす</button>
+  <div id="cine">
+    <div id="cineInner"><video id="vid" muted playsinline preload="auto"></video><canvas id="cv2"></canvas></div>
+    <div id="cineFlash"></div>
+  </div>
   <div id="result">
     <div class="sign">死亡</div>
     <div id="rCause"></div>
@@ -104,9 +119,17 @@ const DEATHS = [
   { id: 'hachi',    name: 'ハチに さされる',           n: 20,   near: 'ハチが みみもとを とおりすぎた' },
   { id: 'rakuseki', name: '落石に あたる',             n: 5,    near: 'ちいさな いしが ころがってきた' },
   { id: 'kinoko',   name: '毒キノコを たべる',         n: 4,    near: 'あやしい キノコと めが あった' },
-  { id: 'rakurai',  name: '落雷に うたれる',           n: 3,    near: 'とおくで ゴロゴロと なった' },
+  { id: 'rakurai',  name: '落雷に うたれる',           n: 3,    near: 'とおくで ゴロゴロと なった',
+    // 全画面の映像（Phase 2 の試作）。impactT：映像のこの秒で直撃（白く暗転）。feet：ピクトグラムの足もと（世界の座標）。scale：大きさ
+    cine: { src: 'media/rakurai.mp4', impactT: 3.3, flash: '#ffffff', feet: [50, 152], scale: 1.3 } },
 ];
 DEATHS.forEach(d => { d.weight = 1 + Math.log10(d.n); });
+
+// 映像の試しプレイ用（rakurai-test.html だけで有効）。落雷だけが死のマスになり、1日目から死にやすい
+if (typeof TEST_RAKURAI !== 'undefined' && TEST_RAKURAI) {
+  DEATHS.forEach(d => { d.weight = d.id === 'rakurai' ? 10 : 0.0001; });
+  CFG.safeStart = 0.6; CFG.safeStep = 0.1;
+}
 
 // 無事の日の一言
 const SAFE_LINES = ['ふつうの 一日だった', 'なにも 起きなかった', 'ぶじに 夜をむかえた', 'いい 天気だった', 'ごはんが おいしかった'];
@@ -251,7 +274,8 @@ const Game = {
 };
 // ===== 描画（Canvas 2D。画像素材なし）=====
 const $ = id => document.getElementById(id);
-const cv = $('cv'), ctx = cv.getContext('2d');
+const cv = $('cv'), ctx1 = cv.getContext('2d');
+let ctx = ctx1;   // 映像の上のキャンバスに描くときだけ一時的に差し替える（70-cine.js）
 let DPR = 1, VW = 0, VH = 0, S = 1, OX = 0, OY = 0, stripePat = null;
 
 // 見た目だけの状態（針のはね・光の点滅）
@@ -288,6 +312,11 @@ function drawPerson(x, y, pose, t) {
     ang = (Math.PI / 2) * (1 - Math.pow(1 - u, 2));
     bob = -Math.sin(u * Math.PI) * 3;
   }
+  // 映像の上では、背景が暗くても見えるように白いふちを付ける
+  if (pose === 'startle' || pose === 'panic') {
+    ctx.shadowColor = 'rgba(255,255,255,.95)'; ctx.shadowBlur = 10;
+    if (pose === 'panic') ctx.translate(Math.sin(t * 61) * 0.9, 0);   // 震え
+  }
   ctx.translate(0, bob);
   ctx.rotate(ang);
   ctx.strokeStyle = ctx.fillStyle = '#1a1a1a';
@@ -299,12 +328,35 @@ function drawPerson(x, y, pose, t) {
   ctx.beginPath();
   if (pose === 'cheer') { ctx.moveTo(-3, -13); ctx.lineTo(-7.5, -21); ctx.moveTo(3, -13); ctx.lineTo(7.5, -21); }
   else if (pose === 'down') { ctx.moveTo(-3, -12); ctx.lineTo(-8, -13); ctx.moveTo(3, -12); ctx.lineTo(8, -14); }
+  else if (pose === 'startle') { ctx.moveTo(-3.4, -12.5); ctx.lineTo(-8.5, -9); ctx.moveTo(3.4, -12.5); ctx.lineTo(8.5, -9); }
+  else if (pose === 'panic') {                              // 両手をバタバタ
+    const w = Math.sin(t * 24) * 3;
+    ctx.moveTo(-3.2, -13); ctx.lineTo(-8 - w * 0.3, -21 + w); ctx.moveTo(3.2, -13); ctx.lineTo(8 + w * 0.3, -21 - w);
+  }
   else { ctx.moveTo(-3.4, -12.5); ctx.lineTo(-6.8, -6); ctx.moveTo(3.4, -12.5); ctx.lineTo(6.8, -6); }
   ctx.stroke();
   ctx.lineWidth = 3;                                       // 脚
   ctx.beginPath();
-  ctx.moveTo(-1.6, -6); ctx.lineTo(-3.8, 3); ctx.moveTo(1.6, -6); ctx.lineTo(3.8, 3);
+  if (pose === 'panic') {
+    const s = Math.sin(t * 20) * 1.6;
+    ctx.moveTo(-1.6, -6); ctx.lineTo(-4.6 + s, 3); ctx.moveTo(1.6, -6); ctx.lineTo(4.6 - s, 3);
+  } else {
+    ctx.moveTo(-1.6, -6); ctx.lineTo(-3.8, 3); ctx.moveTo(1.6, -6); ctx.lineTo(3.8, 3);
+  }
   ctx.stroke();
+  ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
+  if (pose === 'startle') {                                // 頭の上に注意標識の「！」
+    ctx.fillStyle = '#ffcc00'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, -35); ctx.lineTo(5, -26.5); ctx.lineTo(-5, -26.5); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#1a1a1a'; ctx.fillRect(-0.55, -33, 1.1, 3.6); circle(0, -27.9, 0.7); ctx.fill();
+  }
+  if (pose === 'panic') {                                  // 汗のしずく
+    ctx.fillStyle = '#bfe6ff'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 0.5;
+    for (let i = 0; i < 3; i++) {
+      const ph = (t * 3 + i / 3) % 1, side = i % 2 ? 1 : -1;
+      circle(side * (5 + ph * 7), -24 + ph * 9, 1.1 * (1 - ph * 0.4)); ctx.fill(); ctx.stroke();
+    }
+  }
   if (pose === 'down') {                                   // 天使の輪
     ctx.strokeStyle = '#e0a800'; ctx.lineWidth = 1.2;
     ctx.beginPath(); ctx.ellipse(0, -27 + Math.sin(Fx.time * 4) * 0.5, 4.2, 1.5, 0, 0, TAU); ctx.stroke();
@@ -384,7 +436,7 @@ function render(dt) {
   ctx.fillStyle = '#fbf8ee'; ctx.fillRect(0, 0, CFG.worldW, CFG.worldH);
 
   drawWheel();
-  const dead = Game.phase === 'dead', safe = Game.phase === 'safe';
+  const dead = Game.phase === 'dead' && !Cine.holdMain, safe = Game.phase === 'safe';
   drawPerson(dead ? 44 : 50, 44, dead ? 'down' : (safe ? 'cheer' : 'stand'), dead || safe ? Game.tPhase : 0);
 
   // 死亡の瞬間だけ赤
@@ -438,12 +490,55 @@ const Snd = (() => {
     g.gain.setValueAtTime(0.0001, t0);
     g.gain.exponentialRampToValueAtTime(o.gain == null ? 0.3 : o.gain, t0 + 0.02);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    src.connect(fl); fl.connect(g); g.connect(master);
+    src.connect(fl); fl.connect(g); g.connect(o.dest || master);
     src.start(t0, Math.random()); src.stop(t0 + dur + 0.05);
+  }
+
+  // 映像の間だけ鳴らす音をまとめる出口（飛ばすときに一気に切る）
+  let bus = null;
+  function cutBus() {
+    if (bus && ac) { bus.gain.setTargetAtTime(0, now(), 0.02); }
+    bus = null;
   }
 
   return {
     init,
+    // 落雷の映像：風が強まり、遠くで雷鳴、放電の音が高まる。impactT 秒で止まる（直撃の音は impact() を別に鳴らす）
+    cineStart(impactT) {
+      if (!ac) return;
+      cutBus();
+      const t = now();
+      bus = ac.createGain(); bus.gain.value = 1; bus.connect(master);
+      // 風：だんだん強く
+      const w = ac.createBufferSource(); w.buffer = noiseBuf; w.loop = true;
+      const wf = ac.createBiquadFilter(); wf.type = 'bandpass'; wf.Q.value = 0.8;
+      wf.frequency.setValueAtTime(260, t); wf.frequency.linearRampToValueAtTime(820, t + impactT);
+      const wg = ac.createGain();
+      wg.gain.setValueAtTime(0.02, t); wg.gain.linearRampToValueAtTime(0.2, t + impactT);
+      w.connect(wf); wf.connect(wg); wg.connect(bus);
+      w.start(t, Math.random()); w.stop(t + impactT + 0.1);
+      // 遠雷：だんだん近く大きく
+      [[0.9, 0.18], [1.7, 0.26], [2.4, 0.36]].forEach(([at, v]) => {
+        if (at < impactT - 0.2) noise(t + at, 1.3, { type: 'lowpass', f: 140, f2: 60, q: 0.7, gain: v, dest: bus });
+      });
+      // 放電が高まる音（直撃の直前）
+      const s0 = Math.max(0, impactT - 0.8);
+      const o = ac.createOscillator(), og = ac.createGain();
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(220, t + s0); o.frequency.exponentialRampToValueAtTime(2600, t + impactT);
+      og.gain.setValueAtTime(0.0001, t + s0); og.gain.exponentialRampToValueAtTime(0.07, t + impactT - 0.02); og.gain.exponentialRampToValueAtTime(0.0001, t + impactT);
+      o.connect(og); og.connect(bus); o.start(t + s0); o.stop(t + impactT + 0.05);
+      noise(t + s0, 0.8, { type: 'highpass', f: 5000, q: 0.5, gain: 0.09, dest: bus });
+    },
+    cineCut() { cutBus(); },
+    // 直撃：白い閃光の音。このあとの 0.5 秒は無音にする
+    impact() {
+      if (!ac) return;
+      cutBus();
+      const t = now();
+      noise(t, 0.35, { type: 'highpass', f: 1800, q: 0.5, gain: 0.7 });
+      noise(t, 1.6, { type: 'lowpass', f: 220, f2: 40, q: 0.7, gain: 0.9 });
+      tone(70, t, 0.9, { type: 'sine', gain: 0.5, f2: 28 });
+    },
     // 針が境目を越えるカチッ。speed が遅いほど重く強く、死のマスに入る音は高い
     tick(intoDeath, slow) {
       if (!ac) return;
@@ -496,7 +591,8 @@ function bindUI() {
   $('retry').addEventListener('click', () => {
     Snd.init(); Snd.press();
     Game.reset();
-    cardShown = false;
+    cardShown = false; cardTimer = 0;
+    cineReset();
     $('result').classList.remove('show');
   });
   window.addEventListener('resize', resize);
@@ -527,6 +623,7 @@ function onPhase(p) {
     setMsg('');
     go.classList.add('hide');
     Snd.start();
+    cinePrepare();   // 死に方が決まっていれば映像を先に読み込む
   } else if (p === 'safe') {
     const n = Game.near;
     let line, close = false;
@@ -537,10 +634,17 @@ function onPhase(p) {
     Snd.safe(); if (close) Snd.relief();
     go.classList.add('hide');   // 少し見せてから自動で翌日へ（frame で next）
   } else if (p === 'dead') {
-    setMsg('死因：' + DEATHS[Game.deathIdx].name, 'dead');
     go.classList.add('hide');
-    Snd.dead();
+    if (!cineEnter()) fallbackDead();   // 全画面の映像があればそれで。なければ（読めなければ）簡易演出
   }
+}
+
+// Phase 1 の簡易演出：寝たひと＋死因の一言 → 少しして死因カード
+let cardTimer = 0;
+function fallbackDead() {
+  setMsg('死因：' + DEATHS[Game.deathIdx].name, 'dead');
+  Snd.dead();
+  cardTimer = CFG.deathCardDelay;
 }
 
 function showCard() {
@@ -552,6 +656,7 @@ function showCard() {
   $('rDays').innerHTML = '<span class="nb">' + Game.day + '日目に</span> <span class="nb">死亡</span>';
   $('rBest').textContent = isBest && best > 0 ? 'きろく こうしん！' : (best > 0 ? 'ベスト ' + Math.max(best, Game.day) + '日目' : '');
   $('msg').style.visibility = 'hidden';
+  cv.style.filter = '';
   $('result').classList.add('show');
   Snd.card();
 }
@@ -571,11 +676,168 @@ function frame(ts) {
   }
   if (Game.phase === 'safe' && Game.tPhase > CFG.autoNextSecs) Game.next();
   if (Game.phase !== uiPhase) onPhase(Game.phase);
-  if (Game.phase === 'dead' && !cardShown && Game.tPhase > CFG.deathCardDelay) showCard();
+  if (cardTimer > 0) { cardTimer -= dt; if (cardTimer <= 0 && !cardShown) showCard(); }
+  cineFrame(dt);
   updateHeader();
   render(dt);
   requestAnimationFrame(frame);
 }
+// ===== 死亡演出：全画面の映像 =====
+// 流れ：止まる(0.3秒・色が抜ける) → 映像に切り替わる → 迫る(ピクトグラムが気づいて慌てる・寄りと揺れ) → 直撃で白く暗転 → 死因カード
+// 映像が読めないときは Phase 1 の簡易演出（寝たひと）で続ける
+const cineEl = $('cine'), vid = $('vid'), cv2 = $('cv2'), ctx2 = cv2.getContext('2d');
+const cineInner = $('cineInner'), cineFlash = $('cineFlash');
+
+const Cine = {
+  def: null,          // いま読み込んでいる映像の設定（死に方が決まったとき）
+  loadFail: false,
+  pending: false,     // 止まってから映像が始まるまで（色が抜ける間）
+  pendT: 0,
+  on: false,          // 映像の再生中
+  t: 0,               // 映像の経過秒
+  impacted: false,
+  afterT: 0,          // 直撃してからの経過秒
+  holdMain: false,    // 下の円盤の画面を「立ったまま」にしておく
+  k: 1,
+};
+
+// 見たことのある映像は飛ばせる（2回目から）
+const SEEN_KEY = 'death-simulator-seen';
+const seenMem = new Set();
+function wasSeen(id) {
+  if (seenMem.has(id)) return true;
+  try { return (JSON.parse(localStorage.getItem(SEEN_KEY)) || []).indexOf(id) >= 0; } catch (_) { return false; }
+}
+function markSeen(id) {
+  seenMem.add(id);
+  try {
+    const a = JSON.parse(localStorage.getItem(SEEN_KEY)) || [];
+    if (a.indexOf(id) < 0) { a.push(id); localStorage.setItem(SEEN_KEY, JSON.stringify(a)); }
+  } catch (_) {}
+}
+
+function cineResize() {
+  const r = $('stage').getBoundingClientRect();
+  const d = Math.min(window.devicePixelRatio || 1, 2);
+  cv2.width = Math.round(r.width * d); cv2.height = Math.round(r.height * d);
+  Cine.k = r.width / CFG.worldW * d;
+}
+
+// 回り始めるとき、死に方が決まっていれば映像を先に読み込む（回っている間に間に合わせる）
+function cinePrepare() {
+  Cine.def = null; Cine.loadFail = false;
+  const w = Game.plan && Game.plan.target;
+  if (!w || w.kind !== 'death') return;
+  const def = DEATHS[w.idx].cine;
+  if (!def) return;
+  Cine.def = def;
+  if (vid.getAttribute('src') !== def.src) {
+    vid.onerror = () => { Cine.loadFail = true; };
+    vid.setAttribute('src', def.src);
+    vid.load();
+  } else {
+    try { vid.currentTime = 0; } catch (_) {}
+  }
+}
+
+// 死亡が決まった瞬間。映像で見せられるなら true
+function cineEnter() {
+  if (!Cine.def || Cine.loadFail) return false;
+  Cine.pending = true; Cine.pendT = 0; Cine.holdMain = true;
+  cv.style.transition = 'filter .3s'; cv.style.filter = 'grayscale(1) brightness(.8)';
+  $('msg').style.visibility = 'hidden';
+  return true;
+}
+
+function cineBegin() {
+  Cine.pending = false; Cine.on = true; Cine.t = 0; Cine.impacted = false; Cine.afterT = 0;
+  cineResize();
+  cineFlash.style.opacity = '0';
+  cineEl.classList.remove('out'); cineEl.classList.add('show');
+  try { vid.currentTime = 0; } catch (_) {}
+  const p = vid.play(); if (p && p.catch) p.catch(() => {});
+  Snd.cineStart(Cine.def.impactT);
+}
+
+function cineImpact() {
+  Cine.impacted = true; Cine.afterT = 0;
+  cineFlash.style.opacity = '1';
+  ctx2.setTransform(1, 0, 0, 1, 0, 0); ctx2.clearRect(0, 0, cv2.width, cv2.height);   // 当たった瞬間、ピクトグラムは見せない
+  try { vid.pause(); } catch (_) {}
+  Snd.impact();
+  markSeen(Cine.def.id || DEATHS[Game.deathIdx].id);
+}
+
+// タップで飛ばす（2回目から）。直撃の直前までスキップ
+function cineSkip() {
+  if (!Cine.on || Cine.impacted) return;
+  if (!wasSeen(DEATHS[Game.deathIdx].id)) return;
+  Cine.t = Cine.def.impactT;
+  try { vid.currentTime = Math.max(0, Cine.def.impactT - 0.1); } catch (_) {}
+  Snd.cineCut();
+}
+
+function cineEnd() {
+  Cine.on = false; Cine.holdMain = false;
+  cineEl.classList.add('out');
+  setTimeout(() => { if (!Cine.on) cineEl.classList.remove('show', 'out'); }, 450);
+  cv.style.transition = ''; cv.style.filter = '';
+  cineInner.style.transform = '';
+  showCard();
+}
+
+function cineReset() {
+  Cine.def = null; Cine.pending = false; Cine.on = false; Cine.holdMain = false; Cine.impacted = false;
+  cineEl.classList.remove('show', 'out');
+  cineFlash.style.opacity = '0';
+  cineInner.style.transform = '';
+  cv.style.transition = ''; cv.style.filter = '';
+  try { vid.pause(); } catch (_) {}
+  Snd.cineCut();
+}
+
+function cineFrame(dt) {
+  if (Cine.pending) {
+    Cine.pendT += dt;
+    const ready = vid.readyState >= 3;
+    if (Cine.loadFail || Cine.pendT > 2.2) {          // 間に合わない・読めない → 簡易演出
+      Cine.pending = false; Cine.holdMain = false; cv.style.filter = '';
+      fallbackDead();
+    } else if (Cine.pendT >= 0.3 && ready) cineBegin();
+    return;
+  }
+  if (!Cine.on) return;
+  const D = Cine.def;
+  if (!Cine.impacted) {
+    Cine.t += dt;
+    const p = Math.min(1, Cine.t / D.impactT);
+    // 寄り：だんだん速く。揺れ：後半から強く
+    const zoom = 1 + 0.42 * p * p;
+    const amp = Math.max(0, (p - 0.4) / 0.6);
+    const W = cv2.getBoundingClientRect().width || 360;
+    const dx = (Math.random() - 0.5) * 2 * W * 0.014 * amp * amp;
+    const dy = (Math.random() - 0.5) * 2 * W * 0.014 * amp * amp;
+    cineInner.style.transform = 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px) scale(' + zoom.toFixed(4) + ')';
+    // ピクトグラム：のんびり立つ → 気づく → 慌てる
+    const pose = Cine.t < 0.7 ? 'stand' : (Cine.t < 1.4 ? 'startle' : 'panic');
+    const tp = pose === 'stand' ? Cine.t : (pose === 'startle' ? Cine.t - 0.7 : Cine.t - 1.4);
+    ctx2.setTransform(1, 0, 0, 1, 0, 0); ctx2.clearRect(0, 0, cv2.width, cv2.height);
+    ctx2.setTransform(Cine.k, 0, 0, Cine.k, 0, 0);
+    const saved = ctx; ctx = ctx2;
+    ctx.save();
+    ctx.translate(D.feet[0], D.feet[1]); ctx.scale(D.scale, D.scale);
+    drawPerson(0, 0, pose, tp);
+    ctx.restore();
+    ctx = saved;
+    if (Cine.t >= D.impactT) cineImpact();
+  } else {
+    Cine.afterT += dt;
+    if (Cine.afterT >= 0.55) cineEnd();      // 白のまま一拍おいて、死因カードへ
+  }
+}
+
+cineEl.addEventListener('pointerdown', e => { e.preventDefault(); cineSkip(); });
+window.addEventListener('resize', () => { if (Cine.on) cineResize(); });
 // ===== 起動 =====
 Game.reset();
 resize();

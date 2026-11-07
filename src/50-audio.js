@@ -43,12 +43,55 @@ const Snd = (() => {
     g.gain.setValueAtTime(0.0001, t0);
     g.gain.exponentialRampToValueAtTime(o.gain == null ? 0.3 : o.gain, t0 + 0.02);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    src.connect(fl); fl.connect(g); g.connect(master);
+    src.connect(fl); fl.connect(g); g.connect(o.dest || master);
     src.start(t0, Math.random()); src.stop(t0 + dur + 0.05);
+  }
+
+  // 映像の間だけ鳴らす音をまとめる出口（飛ばすときに一気に切る）
+  let bus = null;
+  function cutBus() {
+    if (bus && ac) { bus.gain.setTargetAtTime(0, now(), 0.02); }
+    bus = null;
   }
 
   return {
     init,
+    // 落雷の映像：風が強まり、遠くで雷鳴、放電の音が高まる。impactT 秒で止まる（直撃の音は impact() を別に鳴らす）
+    cineStart(impactT) {
+      if (!ac) return;
+      cutBus();
+      const t = now();
+      bus = ac.createGain(); bus.gain.value = 1; bus.connect(master);
+      // 風：だんだん強く
+      const w = ac.createBufferSource(); w.buffer = noiseBuf; w.loop = true;
+      const wf = ac.createBiquadFilter(); wf.type = 'bandpass'; wf.Q.value = 0.8;
+      wf.frequency.setValueAtTime(260, t); wf.frequency.linearRampToValueAtTime(820, t + impactT);
+      const wg = ac.createGain();
+      wg.gain.setValueAtTime(0.02, t); wg.gain.linearRampToValueAtTime(0.2, t + impactT);
+      w.connect(wf); wf.connect(wg); wg.connect(bus);
+      w.start(t, Math.random()); w.stop(t + impactT + 0.1);
+      // 遠雷：だんだん近く大きく
+      [[0.9, 0.18], [1.7, 0.26], [2.4, 0.36]].forEach(([at, v]) => {
+        if (at < impactT - 0.2) noise(t + at, 1.3, { type: 'lowpass', f: 140, f2: 60, q: 0.7, gain: v, dest: bus });
+      });
+      // 放電が高まる音（直撃の直前）
+      const s0 = Math.max(0, impactT - 0.8);
+      const o = ac.createOscillator(), og = ac.createGain();
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(220, t + s0); o.frequency.exponentialRampToValueAtTime(2600, t + impactT);
+      og.gain.setValueAtTime(0.0001, t + s0); og.gain.exponentialRampToValueAtTime(0.07, t + impactT - 0.02); og.gain.exponentialRampToValueAtTime(0.0001, t + impactT);
+      o.connect(og); og.connect(bus); o.start(t + s0); o.stop(t + impactT + 0.05);
+      noise(t + s0, 0.8, { type: 'highpass', f: 5000, q: 0.5, gain: 0.09, dest: bus });
+    },
+    cineCut() { cutBus(); },
+    // 直撃：白い閃光の音。このあとの 0.5 秒は無音にする
+    impact() {
+      if (!ac) return;
+      cutBus();
+      const t = now();
+      noise(t, 0.35, { type: 'highpass', f: 1800, q: 0.5, gain: 0.7 });
+      noise(t, 1.6, { type: 'lowpass', f: 220, f2: 40, q: 0.7, gain: 0.9 });
+      tone(70, t, 0.9, { type: 'sine', gain: 0.5, f2: 28 });
+    },
     // 針が境目を越えるカチッ。speed が遅いほど重く強く、死のマスに入る音は高い
     tick(intoDeath, slow) {
       if (!ac) return;

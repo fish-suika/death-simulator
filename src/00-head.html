@@ -36,6 +36,17 @@ body{display:flex;align-items:center;justify-content:center}
 #go:active{transform:translateY(1cqw);box-shadow:0 .4cqw 0 #1a1a1a}
 #go.hide{visibility:hidden}
 
+/* 死亡演出：全画面の映像（動画の上のキャンバスにピクトグラム。寄り・揺れは #cineInner をまとめて動かす） */
+#cine{position:absolute;inset:0;z-index:20;overflow:hidden;background:#000;display:none;pointer-events:auto}
+#cine.show{display:block;animation:cfade .3s both}
+#cine.out{animation:cout .4s both}
+@keyframes cfade{from{opacity:0}to{opacity:1}}
+@keyframes cout{from{opacity:1}to{opacity:0}}
+#cineInner{position:absolute;inset:0;transform-origin:50% 78%;will-change:transform}
+#vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+#cv2{position:absolute;inset:0;width:100%;height:100%}
+#cineFlash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+
 /* 死因カード：注意標識 */
 #result{position:absolute;left:8cqw;right:8cqw;top:60cqw;z-index:30;
   background:#ffcc00;border:1.4cqw solid #1a1a1a;border-radius:3cqw;overflow:hidden;
@@ -58,6 +69,10 @@ body{display:flex;align-items:center;justify-content:center}
   <div id="hdr"><span id="dayNo">1日目</span><span id="best"></span></div>
   <div id="msg"></div>
   <button id="go" class="btn">まわす</button>
+  <div id="cine">
+    <div id="cineInner"><video id="vid" muted playsinline preload="auto"></video><canvas id="cv2"></canvas></div>
+    <div id="cineFlash"></div>
+  </div>
   <div id="result">
     <div class="sign">死亡</div>
     <div id="rCause"></div>

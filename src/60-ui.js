@@ -14,7 +14,8 @@ function bindUI() {
   $('retry').addEventListener('click', () => {
     Snd.init(); Snd.press();
     Game.reset();
-    cardShown = false;
+    cardShown = false; cardTimer = 0;
+    cineReset();
     $('result').classList.remove('show');
   });
   window.addEventListener('resize', resize);
@@ -45,6 +46,7 @@ function onPhase(p) {
     setMsg('');
     go.classList.add('hide');
     Snd.start();
+    cinePrepare();   // 死に方が決まっていれば映像を先に読み込む
   } else if (p === 'safe') {
     const n = Game.near;
     let line, close = false;
@@ -55,10 +57,17 @@ function onPhase(p) {
     Snd.safe(); if (close) Snd.relief();
     go.classList.add('hide');   // 少し見せてから自動で翌日へ（frame で next）
   } else if (p === 'dead') {
-    setMsg('死因：' + DEATHS[Game.deathIdx].name, 'dead');
     go.classList.add('hide');
-    Snd.dead();
+    if (!cineEnter()) fallbackDead();   // 全画面の映像があればそれで。なければ（読めなければ）簡易演出
   }
+}
+
+// Phase 1 の簡易演出：寝たひと＋死因の一言 → 少しして死因カード
+let cardTimer = 0;
+function fallbackDead() {
+  setMsg('死因：' + DEATHS[Game.deathIdx].name, 'dead');
+  Snd.dead();
+  cardTimer = CFG.deathCardDelay;
 }
 
 function showCard() {
@@ -70,6 +79,7 @@ function showCard() {
   $('rDays').innerHTML = '<span class="nb">' + Game.day + '日目に</span> <span class="nb">死亡</span>';
   $('rBest').textContent = isBest && best > 0 ? 'きろく こうしん！' : (best > 0 ? 'ベスト ' + Math.max(best, Game.day) + '日目' : '');
   $('msg').style.visibility = 'hidden';
+  cv.style.filter = '';
   $('result').classList.add('show');
   Snd.card();
 }
@@ -89,7 +99,8 @@ function frame(ts) {
   }
   if (Game.phase === 'safe' && Game.tPhase > CFG.autoNextSecs) Game.next();
   if (Game.phase !== uiPhase) onPhase(Game.phase);
-  if (Game.phase === 'dead' && !cardShown && Game.tPhase > CFG.deathCardDelay) showCard();
+  if (cardTimer > 0) { cardTimer -= dt; if (cardTimer <= 0 && !cardShown) showCard(); }
+  cineFrame(dt);
   updateHeader();
   render(dt);
   requestAnimationFrame(frame);
