@@ -10,35 +10,11 @@ const CFG = {
   worldH: 100 * 16 / 9,
   shareUrl: 'https://fish-suika.github.io/death-simulator/',
 
-  // 「無事」の幅（円盤全体に対する割合）。1日目が一番太く、毎日細くなる。平均 3〜4 日で死ぬ目安
-  // （Phase 1 のテストプレイで「死ぬまで何回も回すので飽きる」と言われ、6.9日→3.6日に短くした）
-  safeStart: 0.85,
-  safeStep: 0.07,
-  safeMin: 0.2,
-  safeMax: 0.97,
-
-  // 円盤
-  wheel: { cx: 50, cy: 104, R: 35 },
-  spinSecs: 2.8,        // 回り始めから止まるまで（4.6秒だと長いと言われた）
-  easePow: 3.2,         // 大きいほど最後がじわじわ遅くなる（ドキドキの主な調整）
-  turnsMin: 2,          // 最低でも何周するか（2〜3周）
-  autoNextSecs: 1.0,    // 無事で止まってから自動で翌日へ進むまで（「あしたへ」を押す手間をなくす）
-  edgeMargin: 0.004,    // 止まる位置を境目からこれ(rad)以上離す（境目での判定ぶれを防ぐ）
-  minWeight: 0.9,       // マスの重みの下限（まれな死に方も細くなりすぎないように）
-
-  // 演出
-  nearDeg: 6,           // 死のマスからこの角度以内で止まったら「ニアミス」
-  closeDeg: 22,         // この角度以内なら「あぶなかった」
-  deathCardDelay: 1.5,  // 死んでから死因カードが出るまで(秒)
-  needleKick: 0.55,     // 針が境目で弾かれる大きさ(rad)
+  // 図鑑のおまけ：まだ載っていない死に方が出やすくなる（図鑑の最後が埋まらないのを防ぐ。目安：通しで 20〜25 回で 12 種そろう）
+  boostFrom: 3,         // 図鑑に載っている数がこれを超えたら太くなり始める
+  boostMax: 5,          // 12 種のうち最後の 1 つが載っていないとき、重みが 1+この値 倍
+  minWeight: 0.9,       // 重みの下限（まれな死に方も細くなりすぎないように）
 };
-
-// 行き先。safeBonus：その日の「無事」の幅に足す（家は安全寄り、山・海は危険寄り）
-const DESTS = [
-  { id: 'home',     name: '家', safeBonus: 0.05 },
-  { id: 'mountain', name: '山', safeBonus: -0.02 },
-  { id: 'sea',      name: '海', safeBonus: -0.03 },
-];
 
 // 死に方（実データ。出典と計算は docs/データ出典.md）。
 // n：年間の死者数（円盤のマス幅の元。weight = 1 + log10(n) で縮める）。stat/note：死因カードに出す数字と出どころ。prevent：防ぐには。
@@ -114,16 +90,18 @@ const DEATHS = [
 ];
 DEATHS.forEach(d => { d.weight = d.hidden ? CFG.minWeight : Math.max(CFG.minWeight, 1 + Math.log10(d.n)); });
 
-// 映像の試しプレイ用（rakurai-test.html だけで有効）。落雷だけが死のマスになり、1日目から死にやすい
+// 映像の試しプレイ用（rakurai-test.html だけで有効）。落雷だけが出る
 if (typeof TEST_RAKURAI !== 'undefined' && TEST_RAKURAI) {
   DEATHS.forEach(d => { d.weight = d.id === 'rakurai' ? 10 : 0.0001; });
-  CFG.safeStart = 0.6; CFG.safeStep = 0.1;
+
 }
 
 // 無事の日の一言
 const SAFE_LINES = ['ふつうの 一日だった', 'なにも 起きなかった', 'ぶじに 夜をむかえた', 'いい 天気だった', 'ごはんが おいしかった'];
 const CLOSE_LINES = ['あぶなかった…', 'いま なにか すれちがった', '心臓が ドキッとした'];
 // ===== ゲームの中身（画面を使わない。verify.html でもそのまま動く）=====
+// ルーレットと行き先選びはやめた（テストプレイで「毎回選ぶのが面倒」と言われたため）。
+// タップすると、実データの比にそった重みで死に方がひとつ決まり、すぐその場面が流れる
 const TAU = Math.PI * 2;
 const mod = (a, m) => ((a % m) + m) % m;
 
@@ -136,161 +114,58 @@ function mulberry32(a) {
   };
 }
 
-const destOf = id => DESTS.find(d => d.id === id) || DESTS[0];
-
-// その日・その行き先の「無事」の幅（円盤の何割か）
-function safeFrac(day, dest) {
-  const base = Math.max(CFG.safeMin, CFG.safeStart - CFG.safeStep * (day - 1));
-  return Math.max(CFG.safeMin, Math.min(CFG.safeMax, base + destOf(dest).safeBonus));
-}
-
-// 図鑑まわり（画面側 65-dex.js が差し替える）。隠し枠（隕石）は、図鑑が 12 種そろうと円盤に出る
+// 図鑑まわり（画面側 65-dex.js が差し替える）。隠し枠（隕石）は、図鑑が 12 種そろうと出る
 let HIDDEN_ON = false;
 let DEX_HAS = () => false;                       // その死に方が図鑑に載っているか
 const dexOpen = () => DEATHS.filter(d => !d.hidden && !DEX_HAS(d.id)).length;   // 図鑑の空き
 const dexRegular = () => DEATHS.filter(d => !d.hidden).length;                  // 隠し枠をのぞく種類数
 
-// 円盤のマスの重み。図鑑の空きが半分以下になったら、まだ載っていない死に方を少し太くする（最大 3 倍）
-// （まれな死に方ほど出ないので、図鑑の最後が埋まらなくなるのを防ぐ）
+// 死に方の重み。図鑑にまだ載っていない死に方は、載っている数が増えるほど太くなる（最大 1+CFG.boostMax 倍）。
+// まれな死に方ほど出ないので、そのままだと図鑑の最後が埋まらなくなるのを防ぐ（設定資料 5.10）
 function wheelWeight(i) {
   const d = DEATHS[i];
   if (d.hidden || DEX_HAS(d.id)) return d.weight;
-  const got = dexRegular() - dexOpen(), half = dexRegular() / 2;
-  return d.weight * (1 + 2 * Math.max(0, Math.min(1, (got - half) / half)));
+  const got = dexRegular() - dexOpen();
+  return d.weight * (1 + CFG.boostMax * Math.max(0, Math.min(1, (got - CFG.boostFrom) / (dexRegular() - 1 - CFG.boostFrom))));
 }
 
-// その行き先で出る死に方（番号）。どこでも出る物（any）は どの行き先にも入る
-function destDeaths(dest) {
-  const id = destOf(dest).id, out = [];
-  DEATHS.forEach((d, i) => {
-    if (d.hidden && !HIDDEN_ON) return;
-    if (d.dest === id || d.dest === 'any') out.push(i);
-  });
+// 出る可能性のある死に方（番号）。隠し枠は図鑑がそろうまで出ない
+function candidates() {
+  const out = [];
+  DEATHS.forEach((d, i) => { if (!d.hidden || HIDDEN_ON) out.push(i); });
   return out;
 }
 
-// その日の円盤。円盤の上の角度 a(0〜TAU) で、[0, 無事) のあとに死に方のマスが並ぶ
-function buildWheel(day, dest) {
-  const p = safeFrac(day, dest);
-  const wedges = [{ kind: 'safe', a0: 0, a1: TAU * p }];
-  const list = destDeaths(dest);
+// 死に方をひとつ決める
+function pickDeath(rng) {
+  const list = candidates();
   const total = list.reduce((s, i) => s + wheelWeight(i), 0);
-  let a = TAU * p;
-  list.forEach(i => {
-    const w = TAU * (1 - p) * wheelWeight(i) / total;
-    wedges.push({ kind: 'death', idx: i, a0: a, a1: a + w });
-    a += w;
-  });
-  wedges[wedges.length - 1].a1 = TAU;
-  return wedges;
-}
-
-function wedgeIndexAt(wedges, a) {
-  a = mod(a, TAU);
-  for (let i = 0; i < wedges.length; i++) if (a >= wedges[i].a0 && a < wedges[i].a1) return i;
-  return wedges.length - 1;
-}
-
-// 円盤が rot だけ回っているとき、上の針の下にある円盤上の角度
-const pointerLocal = rot => mod(-Math.PI / 2 - rot, TAU);
-
-// 止まる位置を決める（境目から離す）
-function pickStopAngle(rng) {
-  let a = rng() * TAU;
-  const m = CFG.edgeMargin;
-  if (a < m) a = m;
-  if (TAU - a < m) a = TAU - m;
-  return a;
-}
-function nudgeFromEdges(wedges, a) {
-  const m = CFG.edgeMargin;
-  for (const w of wedges) {
-    const d = a - w.a0;
-    if (w.a0 > 0 && Math.abs(d) < m) a = w.a0 + (d < 0 ? -m : m);
-  }
-  return a;
-}
-
-// 無事で止まったときの、死のマス(= TAU*p 以降)までの近さ[度]と、近い側の死に方
-function nearestDeath(wedges, a) {
-  const edge = wedges[0].a1;                 // 無事の終わり = 最初の死のマスの始まり
-  const toFirst = edge - a, toLast = a;      // 最初の死のマスまで / 最後の死のマス(=TAUの手前)まで
-  if (toFirst <= toLast) return { deg: toFirst * 180 / Math.PI, idx: wedges[1].idx };
-  return { deg: toLast * 180 / Math.PI, idx: wedges[wedges.length - 1].idx };
+  let r = rng() * total;
+  for (const i of list) { r -= wheelWeight(i); if (r < 0) return i; }
+  return list[list.length - 1];
 }
 
 const Game = {
   reset(seed) {
     this.rng = mulberry32(seed == null ? (Math.random() * 2147483647) | 0 : seed);
-    this.day = 1;
-    this.dest = 'home';        // 今日の行き先
-    this.phase = 'ready';      // ready → spin → safe → (next) ready … / spin → dead
-    this.rot = 0;
-    this.wedges = buildWheel(1, 'home');
-    this.plan = null;
-    this.stopA = 0;
+    this.phase = 'ready';      // ready → dead（もう一度は ready に戻して die）
     this.deathIdx = -1;
-    this.near = null;          // 無事で止まったときのニアミス情報
     this.tPhase = 0;
-    this.spinT = 0;
   },
-
-  // 回す（行き先を選んで）。結果は先に乱数で決め、そこへ止まるように減速の曲線を逆算する
-  spin(dest) {
+  // 死ぬ（死に方が決まる）
+  die() {
     if (this.phase !== 'ready') return false;
-    if (dest) { this.dest = destOf(dest).id; this.wedges = buildWheel(this.day, this.dest); }
-    let a = pickStopAngle(this.rng);
-    a = nudgeFromEdges(this.wedges, a);
-    const target = this.wedges[wedgeIndexAt(this.wedges, a)];
-    const phi0 = pointerLocal(this.rot);
-    const turns = CFG.turnsMin + Math.floor(this.rng() * 2);
-    const delta = mod(phi0 - a, TAU) + TAU * turns;      // 回転は時計回り(rot が増える)＝針の下の角度は減っていく
-    this.plan = { rot0: this.rot, delta, a, target };
-    this.stopA = a;
-    this.spinT = 0;
-    this.phase = 'spin';
+    this.deathIdx = pickDeath(this.rng);
+    this.phase = 'dead';
     this.tPhase = 0;
     return true;
   },
-
-  step(dt) {
-    this.tPhase += dt;
-    if (this.phase !== 'spin') return;
-    this.spinT += dt;
-    const u = Math.min(1, this.spinT / CFG.spinSecs);
-    this.rot = this.plan.rot0 + this.plan.delta * (1 - Math.pow(1 - u, CFG.easePow));
-    if (u >= 1) this.finishSpin();
-  },
-
-  finishSpin() {
-    this.rot = this.plan.rot0 + this.plan.delta;
-    const w = this.plan.target;
-    this.tPhase = 0;
-    if (w.kind === 'safe') {
-      this.near = nearestDeath(this.wedges, this.plan.a);
-      this.phase = 'safe';
-    } else {
-      this.deathIdx = w.idx;
-      this.phase = 'dead';
-    }
-  },
-
-  // 無事の翌日へ
-  next() {
-    if (this.phase !== 'safe') return false;
-    this.day++;
-    this.wedges = buildWheel(this.day, this.dest);
-    this.plan = null;
-    this.near = null;
+  // もう一度（すぐ次の死に方）
+  again() {
     this.phase = 'ready';
-    this.tPhase = 0;
-    return true;
+    return this.die();
   },
-
-  // いま針の下にあるマスの番号
-  wedgeUnderPointer() {
-    return wedgeIndexAt(this.wedges, pointerLocal(this.rot));
-  },
+  step(dt) { this.tPhase += dt; },
 };
 // ===== 自動テスト =====
 (function () {
@@ -303,168 +178,71 @@ const Game = {
     p.textContent = (cond ? 'OK  ' : 'NG  ') + name + (note ? '  [' + note + ']' : '');
     out.appendChild(p);
   }
+  const reg = DEATHS.map((d, i) => i).filter(i => !DEATHS[i].hidden);
 
-  // 1 回まわして結果まで進める
-  function spinToEnd(dt) {
-    Game.spin();
-    let n = 0;
-    while (Game.phase === 'spin' && n++ < 100000) Game.step(dt);
+  // --- データ ---
+  {
+    const miss = DEATHS.filter(d => !((d.n > 0 || d.hidden) && d.stat && d.note && d.prevent && d.name && d.cine && d.cine.scene && d.cine.impactT > 0)).map(d => d.id);
+    check('死に方 13 種（隠し枠をふくむ）に、数字・出どころ・防ぐには・名前・場面の設定がそろっている', DEATHS.length === 13 && dexRegular() === 12 && miss.length === 0, miss.join(','));
+    check('重みは下限以上で、数字が大きい死に方ほど重い', DEATHS.every(d => d.weight >= CFG.minWeight - 1e-9) && DEATHS.find(d => d.id === 'furo').weight > DEATHS.find(d => d.id === 'mochi').weight && DEATHS.find(d => d.id === 'mochi').weight > DEATHS.find(d => d.id === 'kinoko').weight);
   }
 
-  // --- 円盤の作り ---
-  for (const day of [1, 5, 12]) {
-    const ws = buildWheel(day);
-    let ok = Math.abs(ws[0].a0) < 1e-9 && Math.abs(ws[ws.length - 1].a1 - TAU) < 1e-9;
-    for (let i = 1; i < ws.length; i++) if (Math.abs(ws[i].a0 - ws[i - 1].a1) > 1e-9) ok = false;
-    check(day + '日目：マスが隙間なく円盤を一周する', ok);
-    check(day + '日目：無事の幅が safeFrac と一致', Math.abs((ws[0].a1 - ws[0].a0) / TAU - safeFrac(day)) < 1e-9);
+  // --- 死に方の決まり方 ---
+  {
+    // 図鑑が空のとき、出る割合は重みの比どおり
+    DEX_HAS = () => false; HIDDEN_ON = false;
+    const rng = mulberry32(12345), N = 120000, cnt = DEATHS.map(() => 0);
+    for (let i = 0; i < N; i++) cnt[pickDeath(rng)]++;
+    const total = reg.reduce((s, i) => s + wheelWeight(i), 0);
+    const worst = Math.max(...reg.map(i => Math.abs(cnt[i] / N - wheelWeight(i) / total)));
+    check('死に方の出る割合が、重みの比どおり（12 万回）', worst < 0.006, '最大のずれ ' + (worst * 100).toFixed(2) + ' ポイント');
+    check('隠し枠（隕石）は、図鑑がそろうまで一度も出ない', cnt[DEATHS.findIndex(d => d.hidden)] === 0);
+    check('12 種ぜんぶが出る', reg.every(i => cnt[i] > 0));
   }
   {
-    let dec = true, prev = 2;
-    for (let d = 1; d <= 40; d++) { const s = safeFrac(d); if (s > prev + 1e-12) dec = false; prev = s; }
-    check('「無事」は日がたつほど細くなる（下限あり）', dec && safeFrac(40) >= CFG.safeMin - 1e-12 && Math.abs(safeFrac(1, 'home') - (CFG.safeStart + DESTS[0].safeBonus)) < 1e-12);
+    // 隕石：12 種そろったら出る。重みの比どおり
+    DEX_HAS = () => true; HIDDEN_ON = true;
+    const hid = DEATHS.findIndex(d => d.hidden), rng = mulberry32(777), N = 60000; let c = 0;
+    for (let i = 0; i < N; i++) if (pickDeath(rng) === hid) c++;
+    const total = candidates().reduce((s, i) => s + wheelWeight(i), 0), exp = wheelWeight(hid) / total;
+    check('隕石は 12 種そろうと出るようになる（重みの比どおり）', c > 0 && Math.abs(c / N - exp) < 0.006, (c / N * 100).toFixed(2) + '% / 期待 ' + (exp * 100).toFixed(2) + '%');
+    DEX_HAS = () => false; HIDDEN_ON = false;
   }
   {
-    // 行き先で無事の幅がちがう（家が一番安全寄り）
-    check('家は山・海より「無事」が太い', safeFrac(1, 'home') > safeFrac(1, 'mountain') && safeFrac(1, 'home') > safeFrac(1, 'sea'));
-  }
-  for (const dst of DESTS) {
-    // 死に方のマス幅は weight の比。まれな物も細すぎない（最小マスが死のマス全体の 5% 以上）
-    const ws = buildWheel(1, dst.id), dws = ws.slice(1);
-    const tot = dws.reduce((s, w) => s + (w.a1 - w.a0), 0);
-    const mn = Math.min(...dws.map(w => (w.a1 - w.a0) / tot));
-    check(dst.name + '：一番細い死のマスでも死のマス全体の 5% 以上', mn > 0.05, (mn * 100).toFixed(1) + '%');
-    // 行き先ちがいの死に方が混ざらない（any は全部の行き先に入る）
-    const bad = dws.filter(w => DEATHS[w.idx].dest !== dst.id && DEATHS[w.idx].dest !== 'any').length;
-    check(dst.name + '：その行き先の死に方だけが並ぶ', bad === 0 && dws.length >= 2, dws.length + ' 種');
-  }
-  {
-    // どの死に方も、どこかの行き先には並ぶ
-    const all = new Set();
-    DESTS.forEach(d => destDeaths(d.id).forEach(i => all.add(i)));
-    check('隠し枠をのぞく 12 種が、どこかの行き先に出る', all.size === dexRegular() && dexRegular() === 12, all.size + ' / ' + dexRegular());
-    // データに出典・数字・防ぐには がそろっている
-    const miss = DEATHS.filter(d => !((d.n > 0 || d.hidden) && d.stat && d.note && d.prevent && d.name && d.near)).map(d => d.id);
-    check('死に方のデータに数字・出どころ・防ぐには・名前がそろっている', miss.length === 0, miss.join(','));
-  }
-  {
-    // 隠し枠（隕石）：図鑑が 12 種そろうまでは円盤に出ない。そろうとどの行き先にも出る
-    const hid = DEATHS.findIndex(d => d.hidden);
-    const before = DESTS.every(d => !destDeaths(d.id).includes(hid));
-    HIDDEN_ON = true;
-    const after = DESTS.every(d => destDeaths(d.id).includes(hid));
-    const wedge = buildWheel(3, 'sea').slice(1).some(w => w.idx === hid);
-    HIDDEN_ON = false;
-    check('隕石は図鑑が 12 種そろうと円盤に出る（それまでは出ない）', before && after && wedge && hid >= 0);
-  }
-  {
-    // 図鑑の空きが少ないと、まだ載っていない死に方のマスが太くなる（最大 3 倍）。空きが多いうちは変わらない
-    const ids = DEATHS.filter(d => !d.hidden).map(d => d.id);
-    const w0 = i => DEATHS[i].weight;
+    // 図鑑の空きが少ないと、まだ載っていない死に方が出やすくなる（最大 1+boostMax 倍）。載っている物は変わらない
+    const ids = reg.map(i => DEATHS[i].id);
+    DEX_HAS = () => false; const none = wheelWeight(reg[0]) === DEATHS[reg[0]].weight;
+    DEX_HAS = id => ids.indexOf(id) < CFG.boostFrom; const few = wheelWeight(reg[11]) === DEATHS[reg[11]].weight;     // 数が少ないうちは変わらない
+    DEX_HAS = id => ids.indexOf(id) < 11;
+    const last = reg[11], max = wheelWeight(last) / DEATHS[last].weight;
+    const owned = wheelWeight(reg[0]) === DEATHS[reg[0]].weight;
     DEX_HAS = () => false;
-    const none = wheelWeight(0) === w0(0);
-    DEX_HAS = id => ids.indexOf(id) < 3;                 // 3 種だけ載っている（半分以下）
-    const few = wheelWeight(10) === w0(10);              // DEATHS の 10 番は 3 種のうちに入らない
-    DEX_HAS = id => ids.indexOf(id) < 11;                // 11 種載っている（空き 1）
-    const last = DEATHS.findIndex(d => ids.indexOf(d.id) === 11);
-    const boosted = wheelWeight(last) > w0(last) * 2.5 && wheelWeight(last) <= w0(last) * 3 + 1e-9 && wheelWeight(0) === w0(0);
+    check('図鑑の空きが少ないと、まだ載っていない死に方が最大 ' + (1 + CFG.boostMax) + ' 倍出やすくなる', none && few && owned && Math.abs(max - (1 + CFG.boostMax)) < 1e-9, '最後の 1 つは ' + max.toFixed(2) + ' 倍');
+  }
+  {
+    // 12 種そろうまでの回数（目安：20〜25 回）
+    let sum = 0, mx = 0; const N = 3000;
+    for (let k = 0; k < N; k++) {
+      const seen = new Set(), rng = mulberry32(k + 1);
+      DEX_HAS = id => seen.has(id); HIDDEN_ON = false;
+      let n = 0;
+      while (n < 3000) { n++; seen.add(DEATHS[pickDeath(rng)].id); if (dexOpen() === 0) break; }
+      sum += n; mx = Math.max(mx, n);
+    }
     DEX_HAS = () => false;
-    check('図鑑の空きが少ないと、まだ載っていない死に方のマスが太くなる', none && few && boosted);
-  }
-  {
-    // 「年間 ○人に 1 人」とレア度
-    const mochi = DEATHS.find(d => d.id === 'mochi'), kin = DEATHS.find(d => d.id === 'kinoko');
-    const stars = DEATHS.map(d => d.hidden ? 5 : Math.max(1, Math.min(5, Math.round(5 - Math.log10(d.n) * 1.2))));
-    check('レア度は 1〜5 で、死者が少ない物ほど高い', stars.every(s => s >= 1 && s <= 5) && mochi.n > kin.n);
-  }
-
-  // --- 止まる位置 ---
-  {
-    let miss = 0, edge = 0, spins = 0;
-    for (let seed = 1; seed <= 3000; seed++) {
-      Game.reset(seed);
-      Game.day = 1 + (seed % 12); Game.wedges = buildWheel(Game.day);
-      Game.spin();
-      const target = Game.wedges.indexOf(Game.plan.target);
-      const deltaOK = Game.plan.delta >= TAU * CFG.turnsMin;
-      spinToEnd(1 / 60);
-      spins++;
-      if (Game.wedgeUnderPointer() !== target || !deltaOK) miss++;
-      // 境目から離れているか
-      const phi = pointerLocal(Game.rot);
-      for (const w of Game.wedges) {
-        const d = Math.min(Math.abs(phi - w.a0), Math.abs(phi - w.a1), Math.abs(phi - w.a0 - TAU), Math.abs(phi - w.a1 + TAU));
-        if (w.a0 > 0 && d < CFG.edgeMargin * 0.9) edge++;
-      }
-      if (Math.min(phi, TAU - phi) < CFG.edgeMargin * 0.9) edge++;
-    }
-    check('決めた結果のマスにちゃんと止まる（3000回）', miss === 0, 'ずれ ' + miss);
-    check('境目すれすれには止まらない', edge === 0, edge + ' 件');
-  }
-  {
-    // 刻み幅がちがっても同じ結果
-    let diff = 0;
-    for (let seed = 1; seed <= 200; seed++) {
-      Game.reset(seed); spinToEnd(1 / 30); const a = Game.phase + ':' + Game.deathIdx + ':' + Game.rot.toFixed(6);
-      Game.reset(seed); spinToEnd(1 / 144); const b = Game.phase + ':' + Game.deathIdx + ':' + Game.rot.toFixed(6);
-      if (a !== b) diff++;
-    }
-    check('フレームレートがちがっても結果が同じ', diff === 0, 'ちがい ' + diff);
-  }
-
-  // --- 確率と平均の生存日数 ---
-  {
-    let death = 0, N = 30000;
-    for (let i = 0; i < N; i++) {
-      Game.reset(1000 + i); spinToEnd(0.5);
-      if (Game.phase === 'dead') death++;
-    }
-    const exp = 1 - safeFrac(1), got = death / N;
-    check('1日目の死亡率が円盤の幅どおり', Math.abs(got - exp) < 0.006, '期待 ' + (exp * 100).toFixed(1) + '% / 実測 ' + (got * 100).toFixed(1) + '%');
-  }
-  for (const dst of DESTS) {
-    let sum = 0, N = 4000, longest = 0;
-    for (let i = 0; i < N; i++) {
-      Game.reset(50000 + i); Game.dest = dst.id; Game.wedges = buildWheel(1, dst.id);
-      let guard = 0;
-      while (guard++ < 200) {
-        spinToEnd(0.5);
-        if (Game.phase === 'dead') break;
-        Game.next();
-      }
-      sum += Game.day; longest = Math.max(longest, Game.day);
-    }
     const mean = sum / N;
-    check(dst.name + 'に行き続けると平均 3〜4.5 日で死ぬ（飽きないよう短め）', mean >= 3 && mean <= 4.5, '平均 ' + mean.toFixed(2) + ' 日目 / 最長 ' + longest + ' 日目');
-  }
-  for (const dst of DESTS) {
-    // 深い日なら、その行き先の死に方は全部出る
-    const want = destDeaths(dst.id), seen = new Set();
-    for (let i = 0; i < 20000; i++) {
-      Game.reset(900000 + i); Game.day = 10; Game.dest = dst.id; Game.wedges = buildWheel(10, dst.id);
-      spinToEnd(0.5);
-      if (Game.phase === 'dead') seen.add(Game.deathIdx);
-    }
-    check('10日目の' + dst.name + 'なら その行き先の死に方が全部出る', want.every(i => seen.has(i)) && seen.size === want.length, seen.size + ' / ' + want.length);
+    check('12 種そろうまでの回数が平均 15〜30 回', mean >= 15 && mean <= 30, '平均 ' + mean.toFixed(1) + ' 回 / 最長 ' + mx + ' 回');
   }
 
-  // --- ニアミス ---
+  // --- 進み方 ---
   {
-    const ws = buildWheel(1);
-    const a = nearestDeath(ws, ws[0].a1 - 0.05);
-    const b = nearestDeath(ws, 0.05);
-    check('無事の端に止まると近い側の死に方を返す', a.idx === ws[1].idx && b.idx === ws[ws.length - 1].idx && a.deg > 0 && a.deg < 4 && b.deg > 0 && b.deg < 4);
-  }
-  {
-    // 無事で止まるたびに phase=safe、next で翌日の円盤になる
-    Game.reset(7);
-    let moved = false;
-    for (let g = 0; g < 50; g++) {
-      spinToEnd(0.5);
-      if (Game.phase === 'safe') { const d0 = Game.day; Game.next(); moved = Game.day === d0 + 1 && Game.phase === 'ready'; break; }
-      break;
-    }
-    check('無事のあと next で翌日・ready に戻る（または初回で死亡）', moved || Game.phase === 'dead');
+    Game.reset(5);
+    const a = Game.phase === 'ready' && Game.die() && Game.phase === 'dead' && Game.deathIdx >= 0;
+    const b = Game.die() === false;                              // 死んでいる間は、もう一度死ねない
+    const c = Game.again() && Game.phase === 'dead';
+    Game.reset(9); const x = (Game.die(), Game.deathIdx); Game.reset(9); const y = (Game.die(), Game.deathIdx);
+    check('死ぬ → もう一度、の流れが正しい', a && b && c);
+    check('同じシードなら同じ死に方になる', x === y);
   }
 
   const s = document.createElement('h2');

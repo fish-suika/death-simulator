@@ -4,7 +4,7 @@ let shareBlob = null;
 
 function shareText() {
   const D = DEATHS[Game.deathIdx];
-  return '【死亡シミュレーター】' + Game.day + '日目、「' + D.name.replace(/ /g, '') + '」で死亡（' + D.stat.replace(/ /g, '') + '）。図鑑 ' + dexGot() + '/' + dexTotal();
+  return '【死亡シミュレーター】' + deathCount() + '回目、「' + D.name.replace(/ /g, '') + '」で死亡（' + D.stat.replace(/ /g, '') + '）。図鑑 ' + dexGot() + '/' + dexTotal();
 }
 
 // 文字がはみ出さないように大きさを下げて 1 行に収める
@@ -34,7 +34,7 @@ function makeShareImage(done) {
   x.fillStyle = '#1a1a1a';
   fitText(x, '死亡', 360, 292, 600, 54);
   fitText(x, D.name.replace(/ /g, ''), 360, 360, 600, 62);
-  fitText(x, Game.day + '日目に 死亡', 360, 424, 600, 40);
+  fitText(x, deathCount() + '回目の 死亡', 360, 424, 600, 40);
   x.fillStyle = '#1a1a1a'; x.fillRect(80, 468, 560, 96);
   x.fillStyle = '#ffcc00'; fitText(x, D.stat.replace(/ /g, ''), 360, 500, 520, 46);
   x.fillStyle = '#ffffff'; fitText(x, D.note, 360, 543, 520, 22, 'normal');

@@ -26,18 +26,16 @@ body{display:flex;align-items:center;justify-content:center}
   border-radius:1.8cqw;display:flex;align-items:center;justify-content:space-between;padding:0 4cqw}
 #dayNo{font-size:7.4cqw;font-weight:bold;letter-spacing:.3cqw}
 #best{font-size:3.6cqw;opacity:.9}
-#msg{position:absolute;top:49cqw;left:6cqw;right:6cqw;height:11cqw;display:flex;align-items:center;justify-content:center;
+#msg{position:absolute;top:128cqw;left:6cqw;right:6cqw;height:11cqw;display:flex;align-items:center;justify-content:center;
   text-align:center;font-size:4.6cqw;font-weight:bold}
 #msg.dead{color:#fff;background:#1a1a1a;border-radius:1.6cqw;padding:0 3cqw}
 
 .btn{border:0;font:inherit;font-weight:bold;cursor:pointer;touch-action:manipulation;pointer-events:auto}
-/* 行き先ボタン（押す＝その日の円盤がまわる） */
-#dests{position:absolute;top:147cqw;left:6cqw;right:6cqw;height:18cqw;display:flex;gap:3.5cqw}
-#dests.hide{visibility:hidden}
-.dest{flex:1;font-size:10cqw;line-height:1;background:#ffcc00;color:#1a1a1a;border:1cqw solid #1a1a1a;border-radius:3.2cqw;
-  box-shadow:0 1.4cqw 0 #1a1a1a;padding:0}
-.dest:active{transform:translateY(1cqw);box-shadow:0 .4cqw 0 #1a1a1a}
-.dest.cur{background:#fff3b0}
+/* 「死ぬ」ボタン（押す＝死に方がひとつ決まって、その場面がすぐ流れる） */
+#goDie{position:absolute;top:146cqw;left:12cqw;right:12cqw;height:19cqw;font-size:9cqw;letter-spacing:2cqw;padding-left:2cqw;
+  background:#ffcc00;color:#1a1a1a;border:1.1cqw solid #1a1a1a;border-radius:3.6cqw;box-shadow:0 1.6cqw 0 #1a1a1a;animation:blink 1.6s ease-in-out infinite}
+#goDie:active{transform:translateY(1.1cqw);box-shadow:0 .5cqw 0 #1a1a1a;animation:none}
+#goDie.hide{visibility:hidden}
 
 /* 死亡演出：全画面の映像（動画の上のキャンバスにピクトグラム。寄り・揺れは #cineInner をまとめて動かす） */
 #cine{position:absolute;inset:0;z-index:20;overflow:hidden;background:#000;display:none;pointer-events:auto}
@@ -126,13 +124,9 @@ body{display:flex;align-items:center;justify-content:center}
 <canvas id="cv"></canvas>
 <div id="stage">
   <div id="stripeT" class="hz"></div>
-  <div id="hdr"><span id="dayNo">1日目</span><span id="best"></span><button id="dexBtn" class="btn">図鑑 0/13</button></div>
+  <div id="hdr"><span id="dayNo">死亡 0回</span><span id="best"></span><button id="dexBtn" class="btn">図鑑 0/13</button></div>
   <div id="msg"></div>
-  <div id="dests">
-    <button class="btn dest" data-d="home">家</button>
-    <button class="btn dest" data-d="mountain">山</button>
-    <button class="btn dest" data-d="sea">海</button>
-  </div>
+  <button id="goDie" class="btn">死ぬ</button>
   <div id="cine">
     <div id="cineInner"><canvas id="cv2"></canvas></div>
     <div id="cineFlash"></div>
@@ -180,35 +174,11 @@ const CFG = {
   worldH: 100 * 16 / 9,
   shareUrl: 'https://fish-suika.github.io/death-simulator/',
 
-  // 「無事」の幅（円盤全体に対する割合）。1日目が一番太く、毎日細くなる。平均 3〜4 日で死ぬ目安
-  // （Phase 1 のテストプレイで「死ぬまで何回も回すので飽きる」と言われ、6.9日→3.6日に短くした）
-  safeStart: 0.85,
-  safeStep: 0.07,
-  safeMin: 0.2,
-  safeMax: 0.97,
-
-  // 円盤
-  wheel: { cx: 50, cy: 104, R: 35 },
-  spinSecs: 2.8,        // 回り始めから止まるまで（4.6秒だと長いと言われた）
-  easePow: 3.2,         // 大きいほど最後がじわじわ遅くなる（ドキドキの主な調整）
-  turnsMin: 2,          // 最低でも何周するか（2〜3周）
-  autoNextSecs: 1.0,    // 無事で止まってから自動で翌日へ進むまで（「あしたへ」を押す手間をなくす）
-  edgeMargin: 0.004,    // 止まる位置を境目からこれ(rad)以上離す（境目での判定ぶれを防ぐ）
-  minWeight: 0.9,       // マスの重みの下限（まれな死に方も細くなりすぎないように）
-
-  // 演出
-  nearDeg: 6,           // 死のマスからこの角度以内で止まったら「ニアミス」
-  closeDeg: 22,         // この角度以内なら「あぶなかった」
-  deathCardDelay: 1.5,  // 死んでから死因カードが出るまで(秒)
-  needleKick: 0.55,     // 針が境目で弾かれる大きさ(rad)
+  // 図鑑のおまけ：まだ載っていない死に方が出やすくなる（図鑑の最後が埋まらないのを防ぐ。目安：通しで 20〜25 回で 12 種そろう）
+  boostFrom: 3,         // 図鑑に載っている数がこれを超えたら太くなり始める
+  boostMax: 5,          // 12 種のうち最後の 1 つが載っていないとき、重みが 1+この値 倍
+  minWeight: 0.9,       // 重みの下限（まれな死に方も細くなりすぎないように）
 };
-
-// 行き先。safeBonus：その日の「無事」の幅に足す（家は安全寄り、山・海は危険寄り）
-const DESTS = [
-  { id: 'home',     name: '家', safeBonus: 0.05 },
-  { id: 'mountain', name: '山', safeBonus: -0.02 },
-  { id: 'sea',      name: '海', safeBonus: -0.03 },
-];
 
 // 死に方（実データ。出典と計算は docs/データ出典.md）。
 // n：年間の死者数（円盤のマス幅の元。weight = 1 + log10(n) で縮める）。stat/note：死因カードに出す数字と出どころ。prevent：防ぐには。
@@ -284,16 +254,18 @@ const DEATHS = [
 ];
 DEATHS.forEach(d => { d.weight = d.hidden ? CFG.minWeight : Math.max(CFG.minWeight, 1 + Math.log10(d.n)); });
 
-// 映像の試しプレイ用（rakurai-test.html だけで有効）。落雷だけが死のマスになり、1日目から死にやすい
+// 映像の試しプレイ用（rakurai-test.html だけで有効）。落雷だけが出る
 if (typeof TEST_RAKURAI !== 'undefined' && TEST_RAKURAI) {
   DEATHS.forEach(d => { d.weight = d.id === 'rakurai' ? 10 : 0.0001; });
-  CFG.safeStart = 0.6; CFG.safeStep = 0.1;
+
 }
 
 // 無事の日の一言
 const SAFE_LINES = ['ふつうの 一日だった', 'なにも 起きなかった', 'ぶじに 夜をむかえた', 'いい 天気だった', 'ごはんが おいしかった'];
 const CLOSE_LINES = ['あぶなかった…', 'いま なにか すれちがった', '心臓が ドキッとした'];
 // ===== ゲームの中身（画面を使わない。verify.html でもそのまま動く）=====
+// ルーレットと行き先選びはやめた（テストプレイで「毎回選ぶのが面倒」と言われたため）。
+// タップすると、実データの比にそった重みで死に方がひとつ決まり、すぐその場面が流れる
 const TAU = Math.PI * 2;
 const mod = (a, m) => ((a % m) + m) % m;
 
@@ -306,161 +278,58 @@ function mulberry32(a) {
   };
 }
 
-const destOf = id => DESTS.find(d => d.id === id) || DESTS[0];
-
-// その日・その行き先の「無事」の幅（円盤の何割か）
-function safeFrac(day, dest) {
-  const base = Math.max(CFG.safeMin, CFG.safeStart - CFG.safeStep * (day - 1));
-  return Math.max(CFG.safeMin, Math.min(CFG.safeMax, base + destOf(dest).safeBonus));
-}
-
-// 図鑑まわり（画面側 65-dex.js が差し替える）。隠し枠（隕石）は、図鑑が 12 種そろうと円盤に出る
+// 図鑑まわり（画面側 65-dex.js が差し替える）。隠し枠（隕石）は、図鑑が 12 種そろうと出る
 let HIDDEN_ON = false;
 let DEX_HAS = () => false;                       // その死に方が図鑑に載っているか
 const dexOpen = () => DEATHS.filter(d => !d.hidden && !DEX_HAS(d.id)).length;   // 図鑑の空き
 const dexRegular = () => DEATHS.filter(d => !d.hidden).length;                  // 隠し枠をのぞく種類数
 
-// 円盤のマスの重み。図鑑の空きが半分以下になったら、まだ載っていない死に方を少し太くする（最大 3 倍）
-// （まれな死に方ほど出ないので、図鑑の最後が埋まらなくなるのを防ぐ）
+// 死に方の重み。図鑑にまだ載っていない死に方は、載っている数が増えるほど太くなる（最大 1+CFG.boostMax 倍）。
+// まれな死に方ほど出ないので、そのままだと図鑑の最後が埋まらなくなるのを防ぐ（設定資料 5.10）
 function wheelWeight(i) {
   const d = DEATHS[i];
   if (d.hidden || DEX_HAS(d.id)) return d.weight;
-  const got = dexRegular() - dexOpen(), half = dexRegular() / 2;
-  return d.weight * (1 + 2 * Math.max(0, Math.min(1, (got - half) / half)));
+  const got = dexRegular() - dexOpen();
+  return d.weight * (1 + CFG.boostMax * Math.max(0, Math.min(1, (got - CFG.boostFrom) / (dexRegular() - 1 - CFG.boostFrom))));
 }
 
-// その行き先で出る死に方（番号）。どこでも出る物（any）は どの行き先にも入る
-function destDeaths(dest) {
-  const id = destOf(dest).id, out = [];
-  DEATHS.forEach((d, i) => {
-    if (d.hidden && !HIDDEN_ON) return;
-    if (d.dest === id || d.dest === 'any') out.push(i);
-  });
+// 出る可能性のある死に方（番号）。隠し枠は図鑑がそろうまで出ない
+function candidates() {
+  const out = [];
+  DEATHS.forEach((d, i) => { if (!d.hidden || HIDDEN_ON) out.push(i); });
   return out;
 }
 
-// その日の円盤。円盤の上の角度 a(0〜TAU) で、[0, 無事) のあとに死に方のマスが並ぶ
-function buildWheel(day, dest) {
-  const p = safeFrac(day, dest);
-  const wedges = [{ kind: 'safe', a0: 0, a1: TAU * p }];
-  const list = destDeaths(dest);
+// 死に方をひとつ決める
+function pickDeath(rng) {
+  const list = candidates();
   const total = list.reduce((s, i) => s + wheelWeight(i), 0);
-  let a = TAU * p;
-  list.forEach(i => {
-    const w = TAU * (1 - p) * wheelWeight(i) / total;
-    wedges.push({ kind: 'death', idx: i, a0: a, a1: a + w });
-    a += w;
-  });
-  wedges[wedges.length - 1].a1 = TAU;
-  return wedges;
-}
-
-function wedgeIndexAt(wedges, a) {
-  a = mod(a, TAU);
-  for (let i = 0; i < wedges.length; i++) if (a >= wedges[i].a0 && a < wedges[i].a1) return i;
-  return wedges.length - 1;
-}
-
-// 円盤が rot だけ回っているとき、上の針の下にある円盤上の角度
-const pointerLocal = rot => mod(-Math.PI / 2 - rot, TAU);
-
-// 止まる位置を決める（境目から離す）
-function pickStopAngle(rng) {
-  let a = rng() * TAU;
-  const m = CFG.edgeMargin;
-  if (a < m) a = m;
-  if (TAU - a < m) a = TAU - m;
-  return a;
-}
-function nudgeFromEdges(wedges, a) {
-  const m = CFG.edgeMargin;
-  for (const w of wedges) {
-    const d = a - w.a0;
-    if (w.a0 > 0 && Math.abs(d) < m) a = w.a0 + (d < 0 ? -m : m);
-  }
-  return a;
-}
-
-// 無事で止まったときの、死のマス(= TAU*p 以降)までの近さ[度]と、近い側の死に方
-function nearestDeath(wedges, a) {
-  const edge = wedges[0].a1;                 // 無事の終わり = 最初の死のマスの始まり
-  const toFirst = edge - a, toLast = a;      // 最初の死のマスまで / 最後の死のマス(=TAUの手前)まで
-  if (toFirst <= toLast) return { deg: toFirst * 180 / Math.PI, idx: wedges[1].idx };
-  return { deg: toLast * 180 / Math.PI, idx: wedges[wedges.length - 1].idx };
+  let r = rng() * total;
+  for (const i of list) { r -= wheelWeight(i); if (r < 0) return i; }
+  return list[list.length - 1];
 }
 
 const Game = {
   reset(seed) {
     this.rng = mulberry32(seed == null ? (Math.random() * 2147483647) | 0 : seed);
-    this.day = 1;
-    this.dest = 'home';        // 今日の行き先
-    this.phase = 'ready';      // ready → spin → safe → (next) ready … / spin → dead
-    this.rot = 0;
-    this.wedges = buildWheel(1, 'home');
-    this.plan = null;
-    this.stopA = 0;
+    this.phase = 'ready';      // ready → dead（もう一度は ready に戻して die）
     this.deathIdx = -1;
-    this.near = null;          // 無事で止まったときのニアミス情報
     this.tPhase = 0;
-    this.spinT = 0;
   },
-
-  // 回す（行き先を選んで）。結果は先に乱数で決め、そこへ止まるように減速の曲線を逆算する
-  spin(dest) {
+  // 死ぬ（死に方が決まる）
+  die() {
     if (this.phase !== 'ready') return false;
-    if (dest) { this.dest = destOf(dest).id; this.wedges = buildWheel(this.day, this.dest); }
-    let a = pickStopAngle(this.rng);
-    a = nudgeFromEdges(this.wedges, a);
-    const target = this.wedges[wedgeIndexAt(this.wedges, a)];
-    const phi0 = pointerLocal(this.rot);
-    const turns = CFG.turnsMin + Math.floor(this.rng() * 2);
-    const delta = mod(phi0 - a, TAU) + TAU * turns;      // 回転は時計回り(rot が増える)＝針の下の角度は減っていく
-    this.plan = { rot0: this.rot, delta, a, target };
-    this.stopA = a;
-    this.spinT = 0;
-    this.phase = 'spin';
+    this.deathIdx = pickDeath(this.rng);
+    this.phase = 'dead';
     this.tPhase = 0;
     return true;
   },
-
-  step(dt) {
-    this.tPhase += dt;
-    if (this.phase !== 'spin') return;
-    this.spinT += dt;
-    const u = Math.min(1, this.spinT / CFG.spinSecs);
-    this.rot = this.plan.rot0 + this.plan.delta * (1 - Math.pow(1 - u, CFG.easePow));
-    if (u >= 1) this.finishSpin();
-  },
-
-  finishSpin() {
-    this.rot = this.plan.rot0 + this.plan.delta;
-    const w = this.plan.target;
-    this.tPhase = 0;
-    if (w.kind === 'safe') {
-      this.near = nearestDeath(this.wedges, this.plan.a);
-      this.phase = 'safe';
-    } else {
-      this.deathIdx = w.idx;
-      this.phase = 'dead';
-    }
-  },
-
-  // 無事の翌日へ
-  next() {
-    if (this.phase !== 'safe') return false;
-    this.day++;
-    this.wedges = buildWheel(this.day, this.dest);
-    this.plan = null;
-    this.near = null;
+  // もう一度（すぐ次の死に方）
+  again() {
     this.phase = 'ready';
-    this.tPhase = 0;
-    return true;
+    return this.die();
   },
-
-  // いま針の下にあるマスの番号
-  wedgeUnderPointer() {
-    return wedgeIndexAt(this.wedges, pointerLocal(this.rot));
-  },
+  step(dt) { this.tPhase += dt; },
 };
 // ===== 描画（Canvas 2D。画像素材なし）=====
 const $ = id => document.getElementById(id);
@@ -468,8 +337,8 @@ const cv = $('cv'), ctx1 = cv.getContext('2d');
 let ctx = ctx1;   // 映像の上のキャンバスに描くときだけ一時的に差し替える（70-cine.js）
 let DPR = 1, VW = 0, VH = 0, S = 1, OX = 0, OY = 0, stripePat = null;
 
-// 見た目だけの状態（針のはね・光の点滅）
-const Fx = { needle: 0, needleV: 0, time: 0 };
+// 見た目だけの状態（人の動き）
+const Fx = { time: 0 };
 
 function resize() {
   DPR = Math.min(window.devicePixelRatio || 1, 3);
@@ -554,80 +423,25 @@ function drawPerson(x, y, pose, t) {
   ctx.restore();
 }
 
-function drawWheel() {
-  const { cx, cy, R } = CFG.wheel;
-  const spinning = Game.phase === 'spin';
-  ctx.save();
-  ctx.translate(cx, cy);
-  // 影とふち
-  ctx.fillStyle = '#0003'; circle(1.2, 2.2, R + 4.6); ctx.fill();
-  ctx.fillStyle = '#1a1a1a'; circle(0, 0, R + 4.6); ctx.fill();
-  // マス
-  ctx.save();
-  ctx.rotate(Game.rot);
-  let k = 0;
-  for (const w of Game.wedges) {
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, R, w.a0, w.a1); ctx.closePath();
-    if (w.kind === 'safe') ctx.fillStyle = '#ffffff';
-    else ctx.fillStyle = (k++ % 2 === 0) ? '#ffcc00' : '#2b2b2b';
-    ctx.fill();
-  }
-  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 0.35;
-  for (const w of Game.wedges) {
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(w.a0) * R, Math.sin(w.a0) * R); ctx.stroke();
-  }
-  ctx.restore();
-  // 無事のラベル（位置は円盤と一緒に回るが、字は立てたまま）
-  {
-    const sw = Game.wedges[0], mid = Game.rot + (sw.a0 + sw.a1) / 2;
-    const lx = Math.cos(mid) * R * 0.55, ly = Math.sin(mid) * R * 0.55;
-    ctx.fillStyle = '#1a1a1a'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = 'bold 9px "Yu Gothic UI","Meiryo",sans-serif';
-    ctx.fillText('無事', lx, ly - 2);
-    ctx.font = 'bold 4.2px "Yu Gothic UI","Meiryo",sans-serif';
-    ctx.fillText(Math.round(safeFrac(Game.day, Game.dest) * 100) + '%', lx, ly + 5);
-  }
-  // ふちの電球
-  const n = 28;
-  for (let i = 0; i < n; i++) {
-    const a = i / n * TAU - Math.PI / 2;
-    let on = true;
-    if (spinning) on = (Math.floor(Fx.time * 12) + i) % 3 !== 0;
-    else if (Game.phase === 'dead') on = Math.floor(Fx.time * 5) % 2 === 0;
-    ctx.fillStyle = on ? '#ffcc00' : '#5a4a10';
-    circle(Math.cos(a) * (R + 2.4), Math.sin(a) * (R + 2.4), 0.95); ctx.fill();
-  }
-  // 中心
-  ctx.fillStyle = '#1a1a1a'; circle(0, 0, 6.2); ctx.fill();
-  ctx.fillStyle = '#ffcc00'; circle(0, 0, 3.6); ctx.fill();
-  ctx.restore();
-
-  // 針（境目を越えるたびにはじかれる）
-  ctx.save();
-  ctx.translate(cx, cy - R - 8.5);
-  ctx.rotate(Fx.needle);
-  ctx.fillStyle = '#1a1a1a'; ctx.strokeStyle = '#fbf8ee'; ctx.lineWidth = 0.9; ctx.lineJoin = 'round';
-  ctx.beginPath(); ctx.moveTo(-3.6, -1.5); ctx.lineTo(3.6, -1.5); ctx.lineTo(0, 13.6); ctx.closePath();
-  ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#ffcc00'; circle(0, 0, 1.5); ctx.fill();
-  ctx.restore();
-}
-
+// ホーム画面：おおきなピクトグラムが立っている（死ぬと、ここに倒れる）
 function render(dt) {
   Fx.time += dt;
-  // 針のばね
-  Fx.needleV += (-420 * Fx.needle - 22 * Fx.needleV) * dt;
-  Fx.needle += Fx.needleV * dt;
-
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.fillStyle = stripePat || '#2a2a2a';
   ctx.fillRect(0, 0, VW, VH);
   ctx.setTransform(DPR * S, 0, 0, DPR * S, DPR * OX, DPR * OY);
   ctx.fillStyle = '#fbf8ee'; ctx.fillRect(0, 0, CFG.worldW, CFG.worldH);
 
-  drawWheel();
-  const dead = Game.phase === 'dead' && !Cine.holdMain, safe = Game.phase === 'safe';
-  drawPerson(dead ? 44 : 50, 44, dead ? 'down' : (safe ? 'cheer' : 'stand'), dead || safe ? Game.tPhase : 0);
+  // 背景：ひし形の注意標識（大）
+  ctx.save(); ctx.translate(50, 82); ctx.rotate(Math.PI / 4);
+  ctx.fillStyle = '#ffcc00'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2.2; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-34, -34, 68, 68, 6) : ctx.rect(-34, -34, 68, 68);
+  ctx.fill(); ctx.stroke(); ctx.restore();
+
+  const dead = Game.phase === 'dead' && !Cine.holdMain;
+  ctx.save(); ctx.translate(dead ? 40 : 50, 98); ctx.scale(1.9, 1.9);
+  drawPerson(0, 0, dead ? 'down' : 'stand', dead ? Game.tPhase : 0);
+  ctx.restore();
 
   // 死亡の瞬間だけ赤
   if (dead && Game.tPhase < 0.6) {
@@ -1064,7 +878,7 @@ const Snd = (() => {
         const AC = window.AudioContext || window.webkitAudioContext;
         if (!AC) return;
         ac = new AC();
-        master = ac.createGain(); master.gain.value = 0.7; master.connect(ac.destination);
+        master = ac.createGain(); master.gain.value = 0.55; master.connect(ac.destination);
         noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
         const d = noiseBuf.getChannelData(0);
         for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -1112,6 +926,7 @@ const Snd = (() => {
 
   return {
     init,
+    reset() { ac = null; bus = null; master = null; },   // 音量の測定用（audio-check.html）。ふだんは使わない
     // 落雷の映像：風が強まり、遠くで雷鳴、放電の音が高まる。impactT 秒で止まる（直撃の音は impact() を別に鳴らす）
     cineStart(impactT, kind) {
       if (!ac) return;
@@ -1156,15 +971,17 @@ const Snd = (() => {
         o.start(t); o.stop(t + impactT + 0.1); return o;
       };
       if (kind === 'room') {
-        const o = osc('sine', 52, 70), g = ramp(0.03, 0.2); o.connect(g);
+        const o = osc('sine', 52, 70), g = ramp(0.008, 0.045); o.connect(g);
         for (let b = 0.4, gap = 0.9; b < impactT - 0.15; b += gap, gap = Math.max(0.28, gap * 0.82)) {       // 鼓動：だんだん速く強く
-          const v = 0.12 + 0.3 * (b / impactT);
+          const v = 0.035 + 0.075 * (b / impactT);
           tone(60, t + b, 0.16, { type: 'sine', gain: v, f2: 38, dest: bus }); tone(60, t + b + 0.17, 0.14, { type: 'sine', gain: v * 0.7, f2: 36, dest: bus });
         }
       } else if (kind === 'buzz') {
-        const o = osc('sawtooth', 150, 230), lf = ac.createOscillator(), lg = ac.createGain(), g = ramp(0.01, 0.16);
-        lf.frequency.value = 38; lg.gain.value = 0.5; lf.connect(lg); lg.connect(g.gain); lf.start(t); lf.stop(t + impactT + 0.1);
-        o.connect(g); loopNoise('bandpass', 1500, 3200, 1.5).connect(ramp(0.005, 0.07));
+        const o = osc('sawtooth', 150, 230), lf = ac.createOscillator(), lg = ac.createGain(), g = ramp(0.012, 0.1), lp = ac.createBiquadFilter();
+        lp.type = 'lowpass'; lp.frequency.value = 800;
+        const trem = ac.createGain(); trem.gain.value = 0.5;                       // 羽音のふるえ（0〜1 の間で揺らす）
+        lf.frequency.value = 38; lg.gain.value = 0.5; lf.connect(lg); lg.connect(trem.gain); lf.start(t); lf.stop(t + impactT + 0.1);
+        o.connect(lp); lp.connect(trem); trem.connect(g); loopNoise('bandpass', 1500, 3200, 1.5).connect(ramp(0.005, 0.05));
       } else if (kind === 'rumble') {
         loopNoise('lowpass', 70, 220, 0.7).connect(ramp(0.04, 0.5));
         loopNoise('bandpass', 400, 1200, 0.6).connect(ramp(0.0, 0.1));
@@ -1172,13 +989,13 @@ const Snd = (() => {
         loopNoise('bandpass', 280, 900, 0.7).connect(ramp(0.03, 0.2));
         const o = osc('sine', 90, 140); o.connect(ramp(0.0, 0.07));
       } else if (kind === 'water') {
-        const lf = ac.createOscillator(), lg = ac.createGain(), g = ramp(0.06, 0.28);
+        const lf = ac.createOscillator(), lg = ac.createGain(), g = ramp(0.04, 0.17);
         lf.frequency.value = 0.8; lg.gain.value = 0.12; lf.connect(lg); lg.connect(g.gain); lf.start(t); lf.stop(t + impactT + 0.1);
         loopNoise('bandpass', 500, 1400, 0.5).connect(g);
-        loopNoise('lowpass', 80, 160, 0.6).connect(ramp(0.0, 0.3));
+        loopNoise('lowpass', 80, 160, 0.6).connect(ramp(0.0, 0.18));
       } else {   // space
-        osc('sine', 180, 3200).connect(ramp(0.0, 0.1));
-        loopNoise('highpass', 800, 6000, 0.5).connect(ramp(0.0, 0.14));
+        osc('sine', 180, 3200).connect(ramp(0.0, 0.045));
+        loopNoise('highpass', 800, 6000, 0.5).connect(ramp(0.0, 0.06));
       }
     },
     cineCut() { cutBus(); },
@@ -1188,13 +1005,13 @@ const Snd = (() => {
       cutBus();
       const t = now();
       if (flash && flash !== '#ffffff') {
-        tone(80, t, 0.5, { type: 'sine', gain: 0.6, f2: 30 });
-        noise(t, 0.5, { type: 'lowpass', f: 300, f2: 50, q: 0.7, gain: 0.6 });
+        tone(80, t, 0.5, { type: 'sine', gain: 0.4, f2: 30 });
+        noise(t, 0.5, { type: 'lowpass', f: 300, f2: 50, q: 0.7, gain: 0.35 });
         return;
       }
-      noise(t, 0.35, { type: 'highpass', f: 1800, q: 0.5, gain: 0.7 });
-      noise(t, 1.6, { type: 'lowpass', f: 220, f2: 40, q: 0.7, gain: 0.9 });
-      tone(70, t, 0.9, { type: 'sine', gain: 0.5, f2: 28 });
+      noise(t, 0.35, { type: 'highpass', f: 1800, q: 0.5, gain: 0.32 });
+      noise(t, 1.6, { type: 'lowpass', f: 220, f2: 40, q: 0.7, gain: 0.42 });
+      tone(70, t, 0.9, { type: 'sine', gain: 0.24, f2: 28 });
     },
     // 針が境目を越えるカチッ。speed が遅いほど重く強く、死のマスに入る音は高い
     tick(intoDeath, slow) {
@@ -1234,37 +1051,35 @@ const Snd = (() => {
     fanfare() {
       if (!ac) return;
       const t = now();
-      [[523, 0], [659, 0.11], [784, 0.22], [1047, 0.36]].forEach(([f, d]) => tone(f, t + d, 0.28, { type: 'square', gain: 0.1 }));
-      [[523, 0.36], [659, 0.36], [784, 0.36]].forEach(([f, d]) => tone(f, t + d, 0.7, { type: 'triangle', gain: 0.12 }));
+      [[523, 0], [659, 0.11], [784, 0.22], [1047, 0.36]].forEach(([f, d]) => tone(f, t + d, 0.28, { type: 'square', gain: 0.07 }));
+      [[523, 0.36], [659, 0.36], [784, 0.36]].forEach(([f, d]) => tone(f, t + d, 0.7, { type: 'triangle', gain: 0.085 }));
     },
     // 図鑑コンプリート／隕石が現れる：長いファンファーレ
     grand() {
       if (!ac) return;
       const t = now();
-      [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => tone(f, t + i * 0.13, 0.3, { type: 'square', gain: 0.1 }));
-      [523, 659, 784, 1047].forEach(f => tone(f, t + 0.95, 1.1, { type: 'triangle', gain: 0.12 }));
+      [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => tone(f, t + i * 0.13, 0.3, { type: 'square', gain: 0.07 }));
+      [523, 659, 784, 1047].forEach(f => tone(f, t + 0.95, 1.1, { type: 'triangle', gain: 0.085 }));
     },
   };
 })();
 // ===== 操作・ループ・結果 =====
-const BEST_KEY = 'death-simulator-best';
-function loadBest() { try { return parseInt(localStorage.getItem(BEST_KEY), 10) || 0; } catch (_) { return 0; } }
-function saveBest(v) { try { localStorage.setItem(BEST_KEY, String(v)); } catch (_) {} }
-
-let uiPhase = '', cardShown = false, last = 0;
-const pick = a => a[Math.floor(Math.random() * a.length)];
+let uiPhase = '', cardShown = false, last = 0, cardTimer = 0;
 
 function bindUI() {
-  document.querySelectorAll('.dest').forEach(b => b.addEventListener('click', () => {
-    Snd.init();
-    if (Game.phase === 'ready') Game.spin(b.dataset.d);
-  }));
+  // 「死ぬ」を押す＝死に方がひとつ決まって、その場面がすぐ流れる
+  $('goDie').addEventListener('click', () => {
+    Snd.init(); Snd.press();
+    if (Game.phase === 'ready' && Game.die()) cinePrepare(Game.deathIdx);
+  });
+  // 「もう一度」＝すぐ次の死に方（ホームに戻って選び直す手間はなし）
   $('retry').addEventListener('click', () => {
     Snd.init(); Snd.press();
-    Game.reset();
+    $('result').classList.remove('show');
     cardShown = false; cardTimer = 0;
     cineReset();
-    $('result').classList.remove('show');
+    uiPhase = 'ready';
+    if (Game.again()) cinePrepare(Game.deathIdx);
   });
   window.addEventListener('resize', resize);
 }
@@ -1277,42 +1092,26 @@ function setMsg(text, cls) {
 }
 
 function updateHeader() {
-  $('dayNo').textContent = Game.day + '日目';
+  $('dayNo').textContent = '死亡 ' + deathCount() + '回';
   $('dexBtn').textContent = '図鑑 ' + dexGot() + '/' + dexTotal();
-  const b = loadBest();
-  $('best').textContent = b > 0 ? 'ベスト ' + b + '日目' : '';
 }
 
 // 局面が変わった瞬間の処理
 function onPhase(p) {
   uiPhase = p;
-  const go = $('dests');
+  const go = $('goDie');
   if (p === 'ready') {
     updateHeader();
-    if (Game.day === 1) setMsg(HIDDEN_ON ? '空に ふしぎな 光が 見える… どこへ 行く？' : 'きょうは どこへ 行く？');   // 2日目以降は前の日の一言を残す
+    setMsg(HIDDEN_ON ? '空に ふしぎな 光が 見える…' : 'あなたは 今日、何で 死ぬ？');
     go.classList.remove('hide');
-  } else if (p === 'spin') {
-    setMsg('');
-    go.classList.add('hide');
-    Snd.start();
-    cinePrepare();   // 死に方が決まっていれば映像を先に読み込む
-  } else if (p === 'safe') {
-    const n = Game.near;
-    let line, close = false;
-    if (n && n.deg < CFG.nearDeg) { line = DEATHS[n.idx].near; close = true; }
-    else if (n && n.deg < CFG.closeDeg) { line = pick(CLOSE_LINES); close = true; }
-    else line = pick(SAFE_LINES);
-    setMsg(line);
-    Snd.safe(); if (close) Snd.relief();
-    go.classList.add('hide');   // 少し見せてから自動で翌日へ（frame で next）
   } else if (p === 'dead') {
     go.classList.add('hide');
-    if (!cineEnter()) fallbackDead();   // 全画面の映像があればそれで。なければ（読めなければ）簡易演出
+    setMsg('');
+    if (!cineEnter()) fallbackDead();   // 全画面の場面があればそれで。なければ簡易演出
   }
 }
 
-// Phase 1 の簡易演出：寝たひと＋死因の一言 → 少しして死因カード
-let cardTimer = 0;
+// 簡易演出：寝たひと＋死因の一言 → 少しして死因カード（場面が用意されていない死に方のための予備）
 function fallbackDead() {
   setMsg('死因：' + DEATHS[Game.deathIdx].name, 'dead');
   Snd.dead();
@@ -1321,9 +1120,6 @@ function fallbackDead() {
 
 function showCard() {
   cardShown = true;
-  const best = loadBest();
-  const isBest = Game.day > best;
-  if (isBest) saveBest(Game.day);
   const D = DEATHS[Game.deathIdx];
   const r = dexRecord(Game.deathIdx);          // 図鑑に記録（初めてなら NEW）
   $('rNew').style.display = r.isNew ? 'block' : 'none';
@@ -1333,7 +1129,7 @@ function showCard() {
     const odds = D.n > 0 ? '年間 ' + oddsText(D) + 'の 死に方' : '日本では 記録のない 死に方';
     od.innerHTML = '<span class="nb">おめでとうございます！</span><br><span class="nb">' + odds + '</span> <span class="nb">' + starsText(D) + '</span>';
   } else {
-    od.textContent = starsText(D) + '  ・  ' + r.count + '回目';
+    od.textContent = starsText(D) + '  ・  この死に方は ' + r.count + '回目';
   }
   const bn = $('rBanner');
   if (r.complete) { bn.textContent = '図鑑コンプリート！'; bn.style.display = 'block'; }
@@ -1346,8 +1142,8 @@ function showCard() {
   $('rStatN').textContent = D.stat;
   $('rStatNote').textContent = D.note;
   $('rPrev').innerHTML = '<i>防ぐには</i>' + D.prevent;
-  $('rDays').innerHTML = '<span class="nb">' + Game.day + '日目に</span> <span class="nb">死亡</span>';
-  $('rBest').textContent = (isBest && best > 0 ? 'きろく こうしん！' : (best > 0 ? 'ベスト ' + Math.max(best, Game.day) + '日目' : '')) + (best > 0 ? '  ・  ' : '') + '図鑑 ' + r.got + '/' + r.total;
+  $('rDays').innerHTML = '<span class="nb">' + deathCount() + '回目の</span> <span class="nb">死亡</span>';
+  $('rBest').textContent = '図鑑 ' + r.got + '/' + r.total;
   $('msg').style.visibility = 'hidden';
   cv.style.filter = '';
   $('result').classList.add('show');
@@ -1358,17 +1154,7 @@ function showCard() {
 function frame(ts) {
   const dt = Math.min(0.05, last ? (ts - last) / 1000 : 0.016);
   last = ts;
-  const prevIdx = Game.wedgeUnderPointer(), prevRot = Game.rot, prevPhase = Game.phase;
   Game.step(dt);
-  if (prevPhase === 'spin') {
-    const idx = Game.wedgeUnderPointer();
-    if (idx !== prevIdx) {
-      const slow = Math.abs(Game.rot - prevRot) / dt < 3.2;   // 遅いほど重くはじかれる
-      Fx.needle = -CFG.needleKick * (slow ? 1 : 0.5); Fx.needleV = 0;
-      Snd.tick(Game.wedges[idx].kind === 'death', slow);
-    }
-  }
-  if (Game.phase === 'safe' && Game.tPhase > CFG.autoNextSecs) Game.next();
   if (Game.phase !== uiPhase) onPhase(Game.phase);
   if (cardTimer > 0) { cardTimer -= dt; if (cardTimer <= 0 && !cardShown) showCard(); }
   cineFrame(dt);
@@ -1386,6 +1172,7 @@ function dexLoad() {
   try { dexData = JSON.parse(localStorage.getItem(DEX_KEY)) || {}; } catch (_) { dexData = {}; }
 }
 function dexSave() { try { localStorage.setItem(DEX_KEY, JSON.stringify(dexData)); } catch (_) {} }
+function deathCount() { return Object.keys(dexData).reduce((s, k) => s + (dexData[k] || 0), 0); }   // これまでに死んだ回数
 function dexTotal() { return DEATHS.length; }                          // 13（隠し枠の隕石をふくむ）
 function dexGot() { return DEATHS.filter(d => dexData[d.id] > 0).length; }
 function dexSync() {               // 図鑑の中身から、円盤に関わる状態を決める
@@ -1588,7 +1375,7 @@ let shareBlob = null;
 
 function shareText() {
   const D = DEATHS[Game.deathIdx];
-  return '【死亡シミュレーター】' + Game.day + '日目、「' + D.name.replace(/ /g, '') + '」で死亡（' + D.stat.replace(/ /g, '') + '）。図鑑 ' + dexGot() + '/' + dexTotal();
+  return '【死亡シミュレーター】' + deathCount() + '回目、「' + D.name.replace(/ /g, '') + '」で死亡（' + D.stat.replace(/ /g, '') + '）。図鑑 ' + dexGot() + '/' + dexTotal();
 }
 
 // 文字がはみ出さないように大きさを下げて 1 行に収める
@@ -1618,7 +1405,7 @@ function makeShareImage(done) {
   x.fillStyle = '#1a1a1a';
   fitText(x, '死亡', 360, 292, 600, 54);
   fitText(x, D.name.replace(/ /g, ''), 360, 360, 600, 62);
-  fitText(x, Game.day + '日目に 死亡', 360, 424, 600, 40);
+  fitText(x, deathCount() + '回目の 死亡', 360, 424, 600, 40);
   x.fillStyle = '#1a1a1a'; x.fillRect(80, 468, 560, 96);
   x.fillStyle = '#ffcc00'; fitText(x, D.stat.replace(/ /g, ''), 360, 500, 520, 46);
   x.fillStyle = '#ffffff'; fitText(x, D.note, 360, 543, 520, 22, 'normal');
@@ -1690,12 +1477,10 @@ function cineResize() {
   Cine.k = r.width / CFG.worldW * d;
 }
 
-// 回り始めるとき、この回の死に方に場面があるかを決めておく
-function cinePrepare() {
+// 死に方が決まったとき、その死に方に場面があるかを決めておく
+function cinePrepare(idx) {
   Cine.def = null;
-  const w = Game.plan && Game.plan.target;
-  if (!w || w.kind !== 'death') return;
-  const def = DEATHS[w.idx].cine;
+  const def = DEATHS[idx] && DEATHS[idx].cine;
   if (def && Scenes[def.scene]) Cine.def = def;
 }
 

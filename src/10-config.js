@@ -5,35 +5,11 @@ const CFG = {
   worldH: 100 * 16 / 9,
   shareUrl: 'https://fish-suika.github.io/death-simulator/',
 
-  // 「無事」の幅（円盤全体に対する割合）。1日目が一番太く、毎日細くなる。平均 3〜4 日で死ぬ目安
-  // （Phase 1 のテストプレイで「死ぬまで何回も回すので飽きる」と言われ、6.9日→3.6日に短くした）
-  safeStart: 0.85,
-  safeStep: 0.07,
-  safeMin: 0.2,
-  safeMax: 0.97,
-
-  // 円盤
-  wheel: { cx: 50, cy: 104, R: 35 },
-  spinSecs: 2.8,        // 回り始めから止まるまで（4.6秒だと長いと言われた）
-  easePow: 3.2,         // 大きいほど最後がじわじわ遅くなる（ドキドキの主な調整）
-  turnsMin: 2,          // 最低でも何周するか（2〜3周）
-  autoNextSecs: 1.0,    // 無事で止まってから自動で翌日へ進むまで（「あしたへ」を押す手間をなくす）
-  edgeMargin: 0.004,    // 止まる位置を境目からこれ(rad)以上離す（境目での判定ぶれを防ぐ）
-  minWeight: 0.9,       // マスの重みの下限（まれな死に方も細くなりすぎないように）
-
-  // 演出
-  nearDeg: 6,           // 死のマスからこの角度以内で止まったら「ニアミス」
-  closeDeg: 22,         // この角度以内なら「あぶなかった」
-  deathCardDelay: 1.5,  // 死んでから死因カードが出るまで(秒)
-  needleKick: 0.55,     // 針が境目で弾かれる大きさ(rad)
+  // 図鑑のおまけ：まだ載っていない死に方が出やすくなる（図鑑の最後が埋まらないのを防ぐ。目安：通しで 20〜25 回で 12 種そろう）
+  boostFrom: 3,         // 図鑑に載っている数がこれを超えたら太くなり始める
+  boostMax: 5,          // 12 種のうち最後の 1 つが載っていないとき、重みが 1+この値 倍
+  minWeight: 0.9,       // 重みの下限（まれな死に方も細くなりすぎないように）
 };
-
-// 行き先。safeBonus：その日の「無事」の幅に足す（家は安全寄り、山・海は危険寄り）
-const DESTS = [
-  { id: 'home',     name: '家', safeBonus: 0.05 },
-  { id: 'mountain', name: '山', safeBonus: -0.02 },
-  { id: 'sea',      name: '海', safeBonus: -0.03 },
-];
 
 // 死に方（実データ。出典と計算は docs/データ出典.md）。
 // n：年間の死者数（円盤のマス幅の元。weight = 1 + log10(n) で縮める）。stat/note：死因カードに出す数字と出どころ。prevent：防ぐには。
@@ -109,10 +85,10 @@ const DEATHS = [
 ];
 DEATHS.forEach(d => { d.weight = d.hidden ? CFG.minWeight : Math.max(CFG.minWeight, 1 + Math.log10(d.n)); });
 
-// 映像の試しプレイ用（rakurai-test.html だけで有効）。落雷だけが死のマスになり、1日目から死にやすい
+// 映像の試しプレイ用（rakurai-test.html だけで有効）。落雷だけが出る
 if (typeof TEST_RAKURAI !== 'undefined' && TEST_RAKURAI) {
   DEATHS.forEach(d => { d.weight = d.id === 'rakurai' ? 10 : 0.0001; });
-  CFG.safeStart = 0.6; CFG.safeStep = 0.1;
+
 }
 
 // 無事の日の一言

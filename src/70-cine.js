@@ -38,12 +38,10 @@ function cineResize() {
   Cine.k = r.width / CFG.worldW * d;
 }
 
-// 回り始めるとき、この回の死に方に場面があるかを決めておく
-function cinePrepare() {
+// 死に方が決まったとき、その死に方に場面があるかを決めておく
+function cinePrepare(idx) {
   Cine.def = null;
-  const w = Game.plan && Game.plan.target;
-  if (!w || w.kind !== 'death') return;
-  const def = DEATHS[w.idx].cine;
+  const def = DEATHS[idx] && DEATHS[idx].cine;
   if (def && Scenes[def.scene]) Cine.def = def;
 }
 

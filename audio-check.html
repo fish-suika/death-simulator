@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><title>音量の確認</title>
+<style>body{font:13px sans-serif;padding:12px}table{border-collapse:collapse}td,th{border:1px solid #999;padding:3px 8px;text-align:right}td:first-child,th:first-child{text-align:left}.hi{background:#fdd}.ok{background:#dfd}</style>
+</head><body><h1>音量の確認（オフラインで鳴らして測る）</h1><div id="out">測定中…</div>
+<script>
+// ===== 効果音（WebAudio で合成。音声ファイルなし・BGMなし）=====
+const Snd = (() => {
+  let ac = null, master = null, noiseBuf = null;
+
+  function init() {
+    if (!ac) {
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        ac = new AC();
+        master = ac.createGain(); master.gain.value = 0.55; master.connect(ac.destination);
+        noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+        const d = noiseBuf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      } catch (_) { ac = null; return; }
+    }
+    if (ac.state === 'suspended') ac.resume();
+  }
+  const now = () => ac.currentTime;
+
+  // f→f2 へ動く1音
+  function tone(f, t0, dur, o) {
+    if (!ac) return;
+    o = o || {};
+    const osc = ac.createOscillator(), g = ac.createGain();
+    osc.type = o.type || 'sine';
+    osc.frequency.setValueAtTime(f, t0);
+    if (o.f2) osc.frequency.exponentialRampToValueAtTime(o.f2, t0 + dur);
+    const a = o.attack || 0.004, v = o.gain == null ? 0.3 : o.gain;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(v, t0 + a);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g); g.connect(o.dest || master);
+    osc.start(t0); osc.stop(t0 + dur + 0.05);
+  }
+  function noise(t0, dur, o) {
+    if (!ac) return;
+    const src = ac.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    const fl = ac.createBiquadFilter(); fl.type = o.type || 'bandpass';
+    fl.frequency.setValueAtTime(o.f, t0); fl.Q.value = o.q || 1;
+    if (o.f2) fl.frequency.exponentialRampToValueAtTime(o.f2, t0 + dur);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(o.gain == null ? 0.3 : o.gain, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(fl); fl.connect(g); g.connect(o.dest || master);
+    src.start(t0, Math.random()); src.stop(t0 + dur + 0.05);
+  }
+
+  // 映像の間だけ鳴らす音をまとめる出口（飛ばすときに一気に切る）
+  let bus = null;
+  function cutBus() {
+    if (bus && ac) { bus.gain.setTargetAtTime(0, now(), 0.02); }
+    bus = null;
+  }
+
+  return {
+    init,
+    reset() { ac = null; bus = null; master = null; },   // 音量の測定用（audio-check.html）。ふだんは使わない
+    // 落雷の映像：風が強まり、遠くで雷鳴、放電の音が高まる。impactT 秒で止まる（直撃の音は impact() を別に鳴らす）
+    cineStart(impactT, kind) {
+      if (!ac) return;
+      cutBus();
+      if (kind && kind !== 'storm') return this.cineOther(impactT, kind);
+      const t = now();
+      bus = ac.createGain(); bus.gain.value = 1; bus.connect(master);
+      // 風：だんだん強く
+      const w = ac.createBufferSource(); w.buffer = noiseBuf; w.loop = true;
+      const wf = ac.createBiquadFilter(); wf.type = 'bandpass'; wf.Q.value = 0.8;
+      wf.frequency.setValueAtTime(260, t); wf.frequency.linearRampToValueAtTime(820, t + impactT);
+      const wg = ac.createGain();
+      wg.gain.setValueAtTime(0.02, t); wg.gain.linearRampToValueAtTime(0.2, t + impactT);
+      w.connect(wf); wf.connect(wg); wg.connect(bus);
+      w.start(t, Math.random()); w.stop(t + impactT + 0.1);
+      // 遠雷：だんだん近く大きく
+      [[0.9, 0.18], [1.7, 0.26], [2.4, 0.36]].forEach(([at, v]) => {
+        if (at < impactT - 0.2) noise(t + at, 1.3, { type: 'lowpass', f: 140, f2: 60, q: 0.7, gain: v, dest: bus });
+      });
+      // 放電が高まる音（直撃の直前）
+      const s0 = Math.max(0, impactT - 0.8);
+      const o = ac.createOscillator(), og = ac.createGain();
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(220, t + s0); o.frequency.exponentialRampToValueAtTime(2600, t + impactT);
+      og.gain.setValueAtTime(0.0001, t + s0); og.gain.exponentialRampToValueAtTime(0.07, t + impactT - 0.02); og.gain.exponentialRampToValueAtTime(0.0001, t + impactT);
+      o.connect(og); og.connect(bus); o.start(t + s0); o.stop(t + impactT + 0.05);
+      noise(t + s0, 0.8, { type: 'highpass', f: 5000, q: 0.5, gain: 0.09, dest: bus });
+    },
+    // 雷以外の場面の音：kind ごとに「じわじわ高まる音」を直撃（impactT 秒）まで鳴らす
+    //  room：低いうなり＋だんだん速くなる鼓動／buzz：ハチの羽音／rumble：地鳴り／wind：風／water：波／space：近づく音
+    cineOther(impactT, kind) {
+      const t = now();
+      bus = ac.createGain(); bus.gain.value = 1; bus.connect(master);
+      const ramp = (g0, g1) => { const o = ac.createGain(); o.gain.setValueAtTime(g0, t); o.gain.linearRampToValueAtTime(g1, t + impactT); o.connect(bus); return o; };
+      const loopNoise = (type, f0, f1, q) => {
+        const s = ac.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
+        const fl = ac.createBiquadFilter(); fl.type = type; fl.Q.value = q || 0.8;
+        fl.frequency.setValueAtTime(f0, t); fl.frequency.linearRampToValueAtTime(f1, t + impactT);
+        s.connect(fl); s.start(t, Math.random()); s.stop(t + impactT + 0.1); return fl;
+      };
+      const osc = (type, f0, f1) => {
+        const o = ac.createOscillator(); o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + impactT);
+        o.start(t); o.stop(t + impactT + 0.1); return o;
+      };
+      if (kind === 'room') {
+        const o = osc('sine', 52, 70), g = ramp(0.008, 0.045); o.connect(g);
+        for (let b = 0.4, gap = 0.9; b < impactT - 0.15; b += gap, gap = Math.max(0.28, gap * 0.82)) {       // 鼓動：だんだん速く強く
+          const v = 0.035 + 0.075 * (b / impactT);
+          tone(60, t + b, 0.16, { type: 'sine', gain: v, f2: 38, dest: bus }); tone(60, t + b + 0.17, 0.14, { type: 'sine', gain: v * 0.7, f2: 36, dest: bus });
+        }
+      } else if (kind === 'buzz') {
+        const o = osc('sawtooth', 150, 230), lf = ac.createOscillator(), lg = ac.createGain(), g = ramp(0.012, 0.1), lp = ac.createBiquadFilter();
+        lp.type = 'lowpass'; lp.frequency.value = 800;
+        const trem = ac.createGain(); trem.gain.value = 0.5;                       // 羽音のふるえ（0〜1 の間で揺らす）
+        lf.frequency.value = 38; lg.gain.value = 0.5; lf.connect(lg); lg.connect(trem.gain); lf.start(t); lf.stop(t + impactT + 0.1);
+        o.connect(lp); lp.connect(trem); trem.connect(g); loopNoise('bandpass', 1500, 3200, 1.5).connect(ramp(0.005, 0.05));
+      } else if (kind === 'rumble') {
+        loopNoise('lowpass', 70, 220, 0.7).connect(ramp(0.04, 0.5));
+        loopNoise('bandpass', 400, 1200, 0.6).connect(ramp(0.0, 0.1));
+      } else if (kind === 'wind') {
+        loopNoise('bandpass', 280, 900, 0.7).connect(ramp(0.03, 0.2));
+        const o = osc('sine', 90, 140); o.connect(ramp(0.0, 0.07));
+      } else if (kind === 'water') {
+        const lf = ac.createOscillator(), lg = ac.createGain(), g = ramp(0.04, 0.17);
+        lf.frequency.value = 0.8; lg.gain.value = 0.12; lf.connect(lg); lg.connect(g.gain); lf.start(t); lf.stop(t + impactT + 0.1);
+        loopNoise('bandpass', 500, 1400, 0.5).connect(g);
+        loopNoise('lowpass', 80, 160, 0.6).connect(ramp(0.0, 0.18));
+      } else {   // space
+        osc('sine', 180, 3200).connect(ramp(0.0, 0.045));
+        loopNoise('highpass', 800, 6000, 0.5).connect(ramp(0.0, 0.06));
+      }
+    },
+    cineCut() { cutBus(); },
+    // 直撃。flash が白なら閃光の音（鋭く高い破裂＋轟き）、黒なら鈍い衝撃だけ。このあとの 0.5 秒は無音にする
+    impact(flash) {
+      if (!ac) return;
+      cutBus();
+      const t = now();
+      if (flash && flash !== '#ffffff') {
+        tone(80, t, 0.5, { type: 'sine', gain: 0.4, f2: 30 });
+        noise(t, 0.5, { type: 'lowpass', f: 300, f2: 50, q: 0.7, gain: 0.35 });
+        return;
+      }
+      noise(t, 0.35, { type: 'highpass', f: 1800, q: 0.5, gain: 0.32 });
+      noise(t, 1.6, { type: 'lowpass', f: 220, f2: 40, q: 0.7, gain: 0.42 });
+      tone(70, t, 0.9, { type: 'sine', gain: 0.24, f2: 28 });
+    },
+    // 針が境目を越えるカチッ。speed が遅いほど重く強く、死のマスに入る音は高い
+    tick(intoDeath, slow) {
+      if (!ac) return;
+      const t = now();
+      const f = intoDeath ? 2300 : 1500;
+      tone(f, t, 0.05, { type: 'square', gain: slow ? 0.16 : 0.07, f2: f * 0.7 });
+      if (slow) noise(t, 0.04, { f: 3000, q: 2, gain: 0.08 });
+    },
+    start() { if (ac) noise(now(), 0.5, { f: 400, f2: 2200, q: 1.2, gain: 0.12 }); },
+    // 無事：明るい2音
+    safe() {
+      if (!ac) return;
+      const t = now();
+      tone(784, t, 0.18, { type: 'triangle', gain: 0.22 });
+      tone(1175, t + 0.12, 0.3, { type: 'triangle', gain: 0.22 });
+    },
+    // かすめて無事：ほっとする息
+    relief() { if (ac) noise(now(), 0.35, { f: 1200, f2: 500, q: 0.7, gain: 0.1 }); },
+    // 死亡：下がる音
+    dead() {
+      if (!ac) return;
+      const t = now();
+      tone(520, t, 0.7, { type: 'sawtooth', gain: 0.22, f2: 70 });
+      tone(260, t + 0.05, 0.7, { type: 'square', gain: 0.1, f2: 55 });
+      noise(t, 0.25, { f: 900, f2: 200, q: 0.8, gain: 0.18 });
+    },
+    // 死因カードが出る：ブザー
+    card() {
+      if (!ac) return;
+      const t = now();
+      tone(190, t, 0.22, { type: 'square', gain: 0.14 });
+      tone(190, t + 0.28, 0.22, { type: 'square', gain: 0.14 });
+    },
+    press() { if (ac) tone(660, now(), 0.06, { type: 'triangle', gain: 0.15 }); },
+    // 初めての死に方：ファンファーレ
+    fanfare() {
+      if (!ac) return;
+      const t = now();
+      [[523, 0], [659, 0.11], [784, 0.22], [1047, 0.36]].forEach(([f, d]) => tone(f, t + d, 0.28, { type: 'square', gain: 0.07 }));
+      [[523, 0.36], [659, 0.36], [784, 0.36]].forEach(([f, d]) => tone(f, t + d, 0.7, { type: 'triangle', gain: 0.085 }));
+    },
+    // 図鑑コンプリート／隕石が現れる：長いファンファーレ
+    grand() {
+      if (!ac) return;
+      const t = now();
+      [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => tone(f, t + i * 0.13, 0.3, { type: 'square', gain: 0.07 }));
+      [523, 659, 784, 1047].forEach(f => tone(f, t + 0.95, 1.1, { type: 'triangle', gain: 0.085 }));
+    },
+  };
+})();
+// 開発用：各効果音をオフラインで鳴らして、ピーク・実効値(dBFS)を測る。耳で確認できない代わりの目安
+// 目安：環境音（場面の間）はピーク −16 dBFS 以下・実効値 −30 dBFS 以下、直撃の音はピーク −9 dBFS 以下、そのほかは −14 dBFS 以下
+(async function () {
+  const SR = 44100;
+  const db = v => v > 1e-6 ? 20 * Math.log10(v) : -120;
+  async function measure(label, dur, fn, limits) {
+    const off = new OfflineAudioContext(1, Math.round(SR * dur), SR);
+    window.AudioContext = function () { return off; };
+    Snd.reset(); Snd.init(); fn();
+    const buf = await off.startRendering();
+    const d = buf.getChannelData(0);
+    let peak = 0, sum = 0, bestWin = 0;
+    const win = Math.round(SR * 0.5);
+    for (let i = 0; i < d.length; i += win) {
+      let s = 0, n = 0;
+      for (let k = i; k < Math.min(d.length, i + win); k++) { const a = Math.abs(d[k]); if (a > peak) peak = a; s += d[k] * d[k]; n++; }
+      bestWin = Math.max(bestWin, Math.sqrt(s / n)); sum += s;
+    }
+    return { label, peak: db(peak), rms: db(Math.sqrt(sum / d.length)), loud: db(bestWin), limits };
+  }
+  const amb = { p: -16, r: -30 }, hit = { p: -9, r: 0 }, ui = { p: -14, r: 0 };
+  const T = { storm: 3.3, room: 3.2, buzz: 3.2, rumble: 3.2, wind: 3.4, water: 3.2, space: 3.6 };
+  const rows = [];
+  for (const k of Object.keys(T)) rows.push(await measure('場面の音：' + k, T[k] + 0.2, () => Snd.cineStart(T[k], k), amb));
+  rows.push(await measure('直撃（白）', 2.0, () => Snd.impact('#ffffff'), hit));
+  rows.push(await measure('直撃（黒）', 1.0, () => Snd.impact('#000000'), hit));
+  rows.push(await measure('ファンファーレ', 1.6, () => Snd.fanfare(), ui));
+  rows.push(await measure('大ファンファーレ', 2.6, () => Snd.grand(), ui));
+  rows.push(await measure('死因カードのブザー', 1.0, () => Snd.card(), ui));
+  rows.push(await measure('ボタン', 0.4, () => Snd.press(), ui));
+  rows.push(await measure('簡易演出の死亡音', 1.2, () => Snd.dead(), hit));
+  let h = '<table><tr><th>音</th><th>ピーク</th><th>実効値(全体)</th><th>いちばん大きい 0.5 秒</th></tr>';
+  rows.forEach(r => {
+    const bad = r.peak > r.limits.p || r.rms > r.limits.r;
+    h += '<tr class="' + (bad ? 'hi' : 'ok') + '"><td>' + r.label + '</td><td>' + r.peak.toFixed(1) + '</td><td>' + r.rms.toFixed(1) + '</td><td>' + r.loud.toFixed(1) + '</td></tr>';
+  });
+  document.getElementById('out').innerHTML = h + '</table>';
+  document.title = rows.some(r => r.peak > r.limits.p || r.rms > r.limits.r) ? 'LOUD' : 'ALL QUIET';
+})();
+</script>
+</body>
+</html>

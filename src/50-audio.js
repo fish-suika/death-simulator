@@ -8,7 +8,7 @@ const Snd = (() => {
         const AC = window.AudioContext || window.webkitAudioContext;
         if (!AC) return;
         ac = new AC();
-        master = ac.createGain(); master.gain.value = 0.7; master.connect(ac.destination);
+        master = ac.createGain(); master.gain.value = 0.55; master.connect(ac.destination);
         noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
         const d = noiseBuf.getChannelData(0);
         for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -56,6 +56,7 @@ const Snd = (() => {
 
   return {
     init,
+    reset() { ac = null; bus = null; master = null; },   // 音量の測定用（audio-check.html）。ふだんは使わない
     // 落雷の映像：風が強まり、遠くで雷鳴、放電の音が高まる。impactT 秒で止まる（直撃の音は impact() を別に鳴らす）
     cineStart(impactT, kind) {
       if (!ac) return;
@@ -100,15 +101,17 @@ const Snd = (() => {
         o.start(t); o.stop(t + impactT + 0.1); return o;
       };
       if (kind === 'room') {
-        const o = osc('sine', 52, 70), g = ramp(0.03, 0.2); o.connect(g);
+        const o = osc('sine', 52, 70), g = ramp(0.008, 0.045); o.connect(g);
         for (let b = 0.4, gap = 0.9; b < impactT - 0.15; b += gap, gap = Math.max(0.28, gap * 0.82)) {       // 鼓動：だんだん速く強く
-          const v = 0.12 + 0.3 * (b / impactT);
+          const v = 0.035 + 0.075 * (b / impactT);
           tone(60, t + b, 0.16, { type: 'sine', gain: v, f2: 38, dest: bus }); tone(60, t + b + 0.17, 0.14, { type: 'sine', gain: v * 0.7, f2: 36, dest: bus });
         }
       } else if (kind === 'buzz') {
-        const o = osc('sawtooth', 150, 230), lf = ac.createOscillator(), lg = ac.createGain(), g = ramp(0.01, 0.16);
-        lf.frequency.value = 38; lg.gain.value = 0.5; lf.connect(lg); lg.connect(g.gain); lf.start(t); lf.stop(t + impactT + 0.1);
-        o.connect(g); loopNoise('bandpass', 1500, 3200, 1.5).connect(ramp(0.005, 0.07));
+        const o = osc('sawtooth', 150, 230), lf = ac.createOscillator(), lg = ac.createGain(), g = ramp(0.012, 0.1), lp = ac.createBiquadFilter();
+        lp.type = 'lowpass'; lp.frequency.value = 800;
+        const trem = ac.createGain(); trem.gain.value = 0.5;                       // 羽音のふるえ（0〜1 の間で揺らす）
+        lf.frequency.value = 38; lg.gain.value = 0.5; lf.connect(lg); lg.connect(trem.gain); lf.start(t); lf.stop(t + impactT + 0.1);
+        o.connect(lp); lp.connect(trem); trem.connect(g); loopNoise('bandpass', 1500, 3200, 1.5).connect(ramp(0.005, 0.05));
       } else if (kind === 'rumble') {
         loopNoise('lowpass', 70, 220, 0.7).connect(ramp(0.04, 0.5));
         loopNoise('bandpass', 400, 1200, 0.6).connect(ramp(0.0, 0.1));
@@ -116,13 +119,13 @@ const Snd = (() => {
         loopNoise('bandpass', 280, 900, 0.7).connect(ramp(0.03, 0.2));
         const o = osc('sine', 90, 140); o.connect(ramp(0.0, 0.07));
       } else if (kind === 'water') {
-        const lf = ac.createOscillator(), lg = ac.createGain(), g = ramp(0.06, 0.28);
+        const lf = ac.createOscillator(), lg = ac.createGain(), g = ramp(0.04, 0.17);
         lf.frequency.value = 0.8; lg.gain.value = 0.12; lf.connect(lg); lg.connect(g.gain); lf.start(t); lf.stop(t + impactT + 0.1);
         loopNoise('bandpass', 500, 1400, 0.5).connect(g);
-        loopNoise('lowpass', 80, 160, 0.6).connect(ramp(0.0, 0.3));
+        loopNoise('lowpass', 80, 160, 0.6).connect(ramp(0.0, 0.18));
       } else {   // space
-        osc('sine', 180, 3200).connect(ramp(0.0, 0.1));
-        loopNoise('highpass', 800, 6000, 0.5).connect(ramp(0.0, 0.14));
+        osc('sine', 180, 3200).connect(ramp(0.0, 0.045));
+        loopNoise('highpass', 800, 6000, 0.5).connect(ramp(0.0, 0.06));
       }
     },
     cineCut() { cutBus(); },
@@ -132,13 +135,13 @@ const Snd = (() => {
       cutBus();
       const t = now();
       if (flash && flash !== '#ffffff') {
-        tone(80, t, 0.5, { type: 'sine', gain: 0.6, f2: 30 });
-        noise(t, 0.5, { type: 'lowpass', f: 300, f2: 50, q: 0.7, gain: 0.6 });
+        tone(80, t, 0.5, { type: 'sine', gain: 0.4, f2: 30 });
+        noise(t, 0.5, { type: 'lowpass', f: 300, f2: 50, q: 0.7, gain: 0.35 });
         return;
       }
-      noise(t, 0.35, { type: 'highpass', f: 1800, q: 0.5, gain: 0.7 });
-      noise(t, 1.6, { type: 'lowpass', f: 220, f2: 40, q: 0.7, gain: 0.9 });
-      tone(70, t, 0.9, { type: 'sine', gain: 0.5, f2: 28 });
+      noise(t, 0.35, { type: 'highpass', f: 1800, q: 0.5, gain: 0.32 });
+      noise(t, 1.6, { type: 'lowpass', f: 220, f2: 40, q: 0.7, gain: 0.42 });
+      tone(70, t, 0.9, { type: 'sine', gain: 0.24, f2: 28 });
     },
     // 針が境目を越えるカチッ。speed が遅いほど重く強く、死のマスに入る音は高い
     tick(intoDeath, slow) {
@@ -178,15 +181,15 @@ const Snd = (() => {
     fanfare() {
       if (!ac) return;
       const t = now();
-      [[523, 0], [659, 0.11], [784, 0.22], [1047, 0.36]].forEach(([f, d]) => tone(f, t + d, 0.28, { type: 'square', gain: 0.1 }));
-      [[523, 0.36], [659, 0.36], [784, 0.36]].forEach(([f, d]) => tone(f, t + d, 0.7, { type: 'triangle', gain: 0.12 }));
+      [[523, 0], [659, 0.11], [784, 0.22], [1047, 0.36]].forEach(([f, d]) => tone(f, t + d, 0.28, { type: 'square', gain: 0.07 }));
+      [[523, 0.36], [659, 0.36], [784, 0.36]].forEach(([f, d]) => tone(f, t + d, 0.7, { type: 'triangle', gain: 0.085 }));
     },
     // 図鑑コンプリート／隕石が現れる：長いファンファーレ
     grand() {
       if (!ac) return;
       const t = now();
-      [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => tone(f, t + i * 0.13, 0.3, { type: 'square', gain: 0.1 }));
-      [523, 659, 784, 1047].forEach(f => tone(f, t + 0.95, 1.1, { type: 'triangle', gain: 0.12 }));
+      [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => tone(f, t + i * 0.13, 0.3, { type: 'square', gain: 0.07 }));
+      [523, 659, 784, 1047].forEach(f => tone(f, t + 0.95, 1.1, { type: 'triangle', gain: 0.085 }));
     },
   };
 })();

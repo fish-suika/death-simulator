@@ -26,18 +26,16 @@ body{display:flex;align-items:center;justify-content:center}
   border-radius:1.8cqw;display:flex;align-items:center;justify-content:space-between;padding:0 4cqw}
 #dayNo{font-size:7.4cqw;font-weight:bold;letter-spacing:.3cqw}
 #best{font-size:3.6cqw;opacity:.9}
-#msg{position:absolute;top:49cqw;left:6cqw;right:6cqw;height:11cqw;display:flex;align-items:center;justify-content:center;
+#msg{position:absolute;top:128cqw;left:6cqw;right:6cqw;height:11cqw;display:flex;align-items:center;justify-content:center;
   text-align:center;font-size:4.6cqw;font-weight:bold}
 #msg.dead{color:#fff;background:#1a1a1a;border-radius:1.6cqw;padding:0 3cqw}
 
 .btn{border:0;font:inherit;font-weight:bold;cursor:pointer;touch-action:manipulation;pointer-events:auto}
-/* 行き先ボタン（押す＝その日の円盤がまわる） */
-#dests{position:absolute;top:147cqw;left:6cqw;right:6cqw;height:18cqw;display:flex;gap:3.5cqw}
-#dests.hide{visibility:hidden}
-.dest{flex:1;font-size:10cqw;line-height:1;background:#ffcc00;color:#1a1a1a;border:1cqw solid #1a1a1a;border-radius:3.2cqw;
-  box-shadow:0 1.4cqw 0 #1a1a1a;padding:0}
-.dest:active{transform:translateY(1cqw);box-shadow:0 .4cqw 0 #1a1a1a}
-.dest.cur{background:#fff3b0}
+/* 「死ぬ」ボタン（押す＝死に方がひとつ決まって、その場面がすぐ流れる） */
+#goDie{position:absolute;top:146cqw;left:12cqw;right:12cqw;height:19cqw;font-size:9cqw;letter-spacing:2cqw;padding-left:2cqw;
+  background:#ffcc00;color:#1a1a1a;border:1.1cqw solid #1a1a1a;border-radius:3.6cqw;box-shadow:0 1.6cqw 0 #1a1a1a;animation:blink 1.6s ease-in-out infinite}
+#goDie:active{transform:translateY(1.1cqw);box-shadow:0 .5cqw 0 #1a1a1a;animation:none}
+#goDie.hide{visibility:hidden}
 
 /* 死亡演出：全画面の映像（動画の上のキャンバスにピクトグラム。寄り・揺れは #cineInner をまとめて動かす） */
 #cine{position:absolute;inset:0;z-index:20;overflow:hidden;background:#000;display:none;pointer-events:auto}
@@ -126,13 +124,9 @@ body{display:flex;align-items:center;justify-content:center}
 <canvas id="cv"></canvas>
 <div id="stage">
   <div id="stripeT" class="hz"></div>
-  <div id="hdr"><span id="dayNo">1日目</span><span id="best"></span><button id="dexBtn" class="btn">図鑑 0/13</button></div>
+  <div id="hdr"><span id="dayNo">死亡 0回</span><span id="best"></span><button id="dexBtn" class="btn">図鑑 0/13</button></div>
   <div id="msg"></div>
-  <div id="dests">
-    <button class="btn dest" data-d="home">家</button>
-    <button class="btn dest" data-d="mountain">山</button>
-    <button class="btn dest" data-d="sea">海</button>
-  </div>
+  <button id="goDie" class="btn">死ぬ</button>
   <div id="cine">
     <div id="cineInner"><canvas id="cv2"></canvas></div>
     <div id="cineFlash"></div>

@@ -7,6 +7,7 @@ function dexLoad() {
   try { dexData = JSON.parse(localStorage.getItem(DEX_KEY)) || {}; } catch (_) { dexData = {}; }
 }
 function dexSave() { try { localStorage.setItem(DEX_KEY, JSON.stringify(dexData)); } catch (_) {} }
+function deathCount() { return Object.keys(dexData).reduce((s, k) => s + (dexData[k] || 0), 0); }   // これまでに死んだ回数
 function dexTotal() { return DEATHS.length; }                          // 13（隠し枠の隕石をふくむ）
 function dexGot() { return DEATHS.filter(d => dexData[d.id] > 0).length; }
 function dexSync() {               // 図鑑の中身から、円盤に関わる状態を決める

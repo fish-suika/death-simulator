@@ -51,3 +51,9 @@ cat src/check-head.html \
     src/46-scenes2.js \
     src/check-run.js \
     src/99-tail.html > scene-check.html
+
+# 音量の確認ページ（開発用。オフラインで鳴らして測る）
+cat src/audio-check-head.html \
+    src/50-audio.js \
+    src/audio-check-run.js \
+    src/99-tail.html > audio-check.html
