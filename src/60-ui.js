@@ -7,10 +7,10 @@ let uiPhase = '', cardShown = false, last = 0;
 const pick = a => a[Math.floor(Math.random() * a.length)];
 
 function bindUI() {
-  $('go').addEventListener('click', () => {
+  document.querySelectorAll('.dest').forEach(b => b.addEventListener('click', () => {
     Snd.init();
-    if (Game.phase === 'ready') Game.spin();
-  });
+    if (Game.phase === 'ready') Game.spin(b.dataset.d);
+  }));
   $('retry').addEventListener('click', () => {
     Snd.init(); Snd.press();
     Game.reset();
@@ -37,11 +37,11 @@ function updateHeader() {
 // 局面が変わった瞬間の処理
 function onPhase(p) {
   uiPhase = p;
-  const go = $('go');
+  const go = $('dests');
   if (p === 'ready') {
     updateHeader();
-    if (Game.day === 1) setMsg('さあ、今日の 運だめし');   // 2日目以降は前の日の一言を残す
-    go.textContent = 'まわす'; go.classList.remove('hide');
+    if (Game.day === 1) setMsg('きょうは どこへ 行く？');   // 2日目以降は前の日の一言を残す
+    go.classList.remove('hide');
   } else if (p === 'spin') {
     setMsg('');
     go.classList.add('hide');
@@ -75,7 +75,11 @@ function showCard() {
   const best = loadBest();
   const isBest = Game.day > best;
   if (isBest) saveBest(Game.day);
-  $('rCause').textContent = DEATHS[Game.deathIdx].name;
+  const D = DEATHS[Game.deathIdx];
+  $('rCause').textContent = D.name;
+  $('rStatN').textContent = D.stat;
+  $('rStatNote').textContent = D.note;
+  $('rPrev').innerHTML = '<i>防ぐには</i>' + D.prevent;
   $('rDays').innerHTML = '<span class="nb">' + Game.day + '日目に</span> <span class="nb">死亡</span>';
   $('rBest').textContent = isBest && best > 0 ? 'きろく こうしん！' : (best > 0 ? 'ベスト ' + Math.max(best, Game.day) + '日目' : '');
   $('msg').style.visibility = 'hidden';

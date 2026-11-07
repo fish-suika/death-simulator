@@ -11,19 +11,30 @@ function mulberry32(a) {
   };
 }
 
-// その日の「無事」の幅（円盤の何割か）
-function safeFrac(day) {
-  return Math.max(CFG.safeMin, CFG.safeStart - CFG.safeStep * (day - 1));
+const destOf = id => DESTS.find(d => d.id === id) || DESTS[0];
+
+// その日・その行き先の「無事」の幅（円盤の何割か）
+function safeFrac(day, dest) {
+  const base = Math.max(CFG.safeMin, CFG.safeStart - CFG.safeStep * (day - 1));
+  return Math.max(CFG.safeMin, Math.min(CFG.safeMax, base + destOf(dest).safeBonus));
+}
+
+// その行き先で出る死に方（番号）。どこでも出る物（any）は どの行き先にも入る
+function destDeaths(dest) {
+  const id = destOf(dest).id, out = [];
+  DEATHS.forEach((d, i) => { if (d.dest === id || d.dest === 'any') out.push(i); });
+  return out;
 }
 
 // その日の円盤。円盤の上の角度 a(0〜TAU) で、[0, 無事) のあとに死に方のマスが並ぶ
-function buildWheel(day) {
-  const p = safeFrac(day);
+function buildWheel(day, dest) {
+  const p = safeFrac(day, dest);
   const wedges = [{ kind: 'safe', a0: 0, a1: TAU * p }];
-  const total = DEATHS.reduce((s, d) => s + d.weight, 0);
+  const list = destDeaths(dest);
+  const total = list.reduce((s, i) => s + DEATHS[i].weight, 0);
   let a = TAU * p;
-  DEATHS.forEach((d, i) => {
-    const w = TAU * (1 - p) * d.weight / total;
+  list.forEach(i => {
+    const w = TAU * (1 - p) * DEATHS[i].weight / total;
     wedges.push({ kind: 'death', idx: i, a0: a, a1: a + w });
     a += w;
   });
@@ -69,9 +80,10 @@ const Game = {
   reset(seed) {
     this.rng = mulberry32(seed == null ? (Math.random() * 2147483647) | 0 : seed);
     this.day = 1;
+    this.dest = 'home';        // 今日の行き先
     this.phase = 'ready';      // ready → spin → safe → (next) ready … / spin → dead
     this.rot = 0;
-    this.wedges = buildWheel(1);
+    this.wedges = buildWheel(1, 'home');
     this.plan = null;
     this.stopA = 0;
     this.deathIdx = -1;
@@ -80,9 +92,10 @@ const Game = {
     this.spinT = 0;
   },
 
-  // 回す。結果は先に乱数で決め、そこへ止まるように減速の曲線を逆算する
-  spin() {
+  // 回す（行き先を選んで）。結果は先に乱数で決め、そこへ止まるように減速の曲線を逆算する
+  spin(dest) {
     if (this.phase !== 'ready') return false;
+    if (dest) { this.dest = destOf(dest).id; this.wedges = buildWheel(this.day, this.dest); }
     let a = pickStopAngle(this.rng);
     a = nudgeFromEdges(this.wedges, a);
     const target = this.wedges[wedgeIndexAt(this.wedges, a)];
@@ -123,7 +136,7 @@ const Game = {
   next() {
     if (this.phase !== 'safe') return false;
     this.day++;
-    this.wedges = buildWheel(this.day);
+    this.wedges = buildWheel(this.day, this.dest);
     this.plan = null;
     this.near = null;
     this.phase = 'ready';

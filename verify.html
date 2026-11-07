@@ -15,6 +15,7 @@ const CFG = {
   safeStart: 0.85,
   safeStep: 0.07,
   safeMin: 0.2,
+  safeMax: 0.97,
 
   // 円盤
   wheel: { cx: 50, cy: 104, R: 35 },
@@ -23,6 +24,7 @@ const CFG = {
   turnsMin: 2,          // 最低でも何周するか（2〜3周）
   autoNextSecs: 1.0,    // 無事で止まってから自動で翌日へ進むまで（「あしたへ」を押す手間をなくす）
   edgeMargin: 0.004,    // 止まる位置を境目からこれ(rad)以上離す（境目での判定ぶれを防ぐ）
+  minWeight: 0.6,       // マスの重みの下限（まれな死に方も細くなりすぎないように）
 
   // 演出
   nearDeg: 6,           // 死のマスからこの角度以内で止まったら「ニアミス」
@@ -31,19 +33,57 @@ const CFG = {
   needleKick: 0.55,     // 針が境目で弾かれる大きさ(rad)
 };
 
-// 死に方（Phase 1 は仮。数字 n は仮の年間死者数。Phase 2 で実データに入れ替える）
-// weight = 1 + log10(n)：死者数の比を対数で縮めて、まれな物も細すぎないようにする
+// 行き先。safeBonus：その日の「無事」の幅に足す（家は安全寄り、山・海は危険寄り）
+const DESTS = [
+  { id: 'home',     name: '家', safeBonus: 0.05 },
+  { id: 'mountain', name: '山', safeBonus: -0.02 },
+  { id: 'sea',      name: '海', safeBonus: -0.03 },
+];
+
+// 死に方（実データ。出典と計算は docs/データ出典.md）。
+// n：年間の死者数（円盤のマス幅の元。weight = 1 + log10(n) で縮める）。stat/note：死因カードに出す数字と出どころ。prevent：防ぐには。
+// dest：出る行き先（any は どの行き先でも出る）。cine：全画面の場面（無い物は簡易演出）
 const DEATHS = [
-  { id: 'mochi',    name: 'もちを のどに つまらせる', n: 1500, near: 'もちが のどの おくを かすめた' },
-  { id: 'riganryu', name: '離岸流に ながされる',       n: 300,  near: 'あしが ふっと うきそうになった' },
-  { id: 'hachi',    name: 'ハチに さされる',           n: 20,   near: 'ハチが みみもとを とおりすぎた' },
-  { id: 'rakuseki', name: '落石に あたる',             n: 5,    near: 'ちいさな いしが ころがってきた' },
-  { id: 'kinoko',   name: '毒キノコを たべる',         n: 4,    near: 'あやしい キノコと めが あった' },
-  { id: 'rakurai',  name: '落雷に うたれる',           n: 3,    near: 'とおくで ゴロゴロと なった',
+  { id: 'mochi', dest: 'home', name: 'もちを のどに つまらせる', n: 330,
+    stat: '年間 約330人', note: '65歳以上・2018〜2019年の平均（消費者庁）',
+    prevent: 'もちは 小さく切って、よくかんでから 飲みこむ',
+    near: 'もちが のどの おくを かすめた' },
+  { id: 'yuki', dest: 'home', name: '雪下ろしで 屋根から 落ちる', n: 80,
+    stat: '年間 約80人', note: '雪害の死者・2010〜2019年冬の平均。大半が除雪中（消防庁）',
+    prevent: '雪下ろしは ひとりでやらず、命綱と ヘルメットを つける',
+    near: '屋根の雪が ずるっと 動いた' },
+  { id: 'fugu', dest: 'home', name: 'フグの毒に あたる', n: 1.5,
+    stat: '10年で 約15人', note: '2003〜2012年（神奈川県衛生研究所の集計）',
+    prevent: 'フグは 免許のある店で。釣ったフグを 家でさばかない',
+    near: 'フグの 肝が ちらっと 見えた' },
+  { id: 'kinoko', dest: 'home', name: '毒キノコを 食べる', n: 0.3,
+    stat: '10年で 3人', note: '2012〜2021年（厚生労働省）',
+    prevent: '知らない キノコは 食べない・人にも あげない。迷ったら 捨てる',
+    near: 'あやしい キノコと めが あった' },
+  { id: 'hachi', dest: 'mountain', name: 'ハチに さされる', n: 18,
+    stat: '年間 約18人', note: '2021〜2024年の平均（人口動態統計）',
+    prevent: '黒い服を 避け、巣を見つけたら そっと はなれる。さされたら すぐ病院へ',
+    near: 'ハチが みみもとを とおりすぎた' },
+  { id: 'hebi', dest: 'mountain', name: '毒ヘビに かまれる', n: 3.5,
+    stat: '年間 約3〜4人', note: '2018〜2019年（人口動態統計）',
+    prevent: '草むらに 手や足を つっこまない。かまれたら 動かず 救急車を',
+    near: '足もとの 落ち葉が がさっと 動いた' },
+  { id: 'nadare', dest: 'mountain', name: '雪崩に のまれる', n: 9,
+    stat: '年間 約9人', note: '1991〜2020年の30年で274人（日本雪崩ネットワーク）',
+    prevent: '雪崩の危険が高い日は 斜面に入らない。入るなら 装備と講習を',
+    near: '山の上で 雪けむりが 上がった' },
+  { id: 'umi', dest: 'sea', name: '海で おぼれる', n: 372,
+    stat: '年間 約370人', note: '海の死者・行方不明者・2024年（警察庁）',
+    prevent: '流されたら 岸と平行に およぐ。ライフジャケットを着て、監視員のいる浜で',
+    near: 'あしが ふっと うきそうになった' },
+  { id: 'rakurai', dest: 'any', name: '落雷に うたれる', n: 10,
+    stat: '年間 10人未満', note: '近年の日本（藤部 2017）',
+    prevent: '空が 暗くなったら 建物か 車の中へ。木の下には にげない',
+    near: 'とおくで ゴロゴロと なった',
     // 全画面の場面（背景は 45-scenes.js がコードで描く）。impactT：この秒で直撃（白く暗転）。feet：ピクトグラムの足もと（世界の座標）。scale：大きさ
     cine: { scene: 'rakurai', impactT: 3.3, flash: '#ffffff', feet: [50, 152], scale: 1.3 } },
 ];
-DEATHS.forEach(d => { d.weight = 1 + Math.log10(d.n); });
+DEATHS.forEach(d => { d.weight = Math.max(CFG.minWeight, 1 + Math.log10(d.n)); });
 
 // 映像の試しプレイ用（rakurai-test.html だけで有効）。落雷だけが死のマスになり、1日目から死にやすい
 if (typeof TEST_RAKURAI !== 'undefined' && TEST_RAKURAI) {
@@ -67,19 +107,30 @@ function mulberry32(a) {
   };
 }
 
-// その日の「無事」の幅（円盤の何割か）
-function safeFrac(day) {
-  return Math.max(CFG.safeMin, CFG.safeStart - CFG.safeStep * (day - 1));
+const destOf = id => DESTS.find(d => d.id === id) || DESTS[0];
+
+// その日・その行き先の「無事」の幅（円盤の何割か）
+function safeFrac(day, dest) {
+  const base = Math.max(CFG.safeMin, CFG.safeStart - CFG.safeStep * (day - 1));
+  return Math.max(CFG.safeMin, Math.min(CFG.safeMax, base + destOf(dest).safeBonus));
+}
+
+// その行き先で出る死に方（番号）。どこでも出る物（any）は どの行き先にも入る
+function destDeaths(dest) {
+  const id = destOf(dest).id, out = [];
+  DEATHS.forEach((d, i) => { if (d.dest === id || d.dest === 'any') out.push(i); });
+  return out;
 }
 
 // その日の円盤。円盤の上の角度 a(0〜TAU) で、[0, 無事) のあとに死に方のマスが並ぶ
-function buildWheel(day) {
-  const p = safeFrac(day);
+function buildWheel(day, dest) {
+  const p = safeFrac(day, dest);
   const wedges = [{ kind: 'safe', a0: 0, a1: TAU * p }];
-  const total = DEATHS.reduce((s, d) => s + d.weight, 0);
+  const list = destDeaths(dest);
+  const total = list.reduce((s, i) => s + DEATHS[i].weight, 0);
   let a = TAU * p;
-  DEATHS.forEach((d, i) => {
-    const w = TAU * (1 - p) * d.weight / total;
+  list.forEach(i => {
+    const w = TAU * (1 - p) * DEATHS[i].weight / total;
     wedges.push({ kind: 'death', idx: i, a0: a, a1: a + w });
     a += w;
   });
@@ -125,9 +176,10 @@ const Game = {
   reset(seed) {
     this.rng = mulberry32(seed == null ? (Math.random() * 2147483647) | 0 : seed);
     this.day = 1;
+    this.dest = 'home';        // 今日の行き先
     this.phase = 'ready';      // ready → spin → safe → (next) ready … / spin → dead
     this.rot = 0;
-    this.wedges = buildWheel(1);
+    this.wedges = buildWheel(1, 'home');
     this.plan = null;
     this.stopA = 0;
     this.deathIdx = -1;
@@ -136,9 +188,10 @@ const Game = {
     this.spinT = 0;
   },
 
-  // 回す。結果は先に乱数で決め、そこへ止まるように減速の曲線を逆算する
-  spin() {
+  // 回す（行き先を選んで）。結果は先に乱数で決め、そこへ止まるように減速の曲線を逆算する
+  spin(dest) {
     if (this.phase !== 'ready') return false;
+    if (dest) { this.dest = destOf(dest).id; this.wedges = buildWheel(this.day, this.dest); }
     let a = pickStopAngle(this.rng);
     a = nudgeFromEdges(this.wedges, a);
     const target = this.wedges[wedgeIndexAt(this.wedges, a)];
@@ -179,7 +232,7 @@ const Game = {
   next() {
     if (this.phase !== 'safe') return false;
     this.day++;
-    this.wedges = buildWheel(this.day);
+    this.wedges = buildWheel(this.day, this.dest);
     this.plan = null;
     this.near = null;
     this.phase = 'ready';
@@ -222,14 +275,30 @@ const Game = {
   {
     let dec = true, prev = 2;
     for (let d = 1; d <= 40; d++) { const s = safeFrac(d); if (s > prev + 1e-12) dec = false; prev = s; }
-    check('「無事」は日がたつほど細くなる（下限あり）', dec && safeFrac(40) >= CFG.safeMin - 1e-12 && safeFrac(1) === CFG.safeStart);
+    check('「無事」は日がたつほど細くなる（下限あり）', dec && safeFrac(40) >= CFG.safeMin - 1e-12 && Math.abs(safeFrac(1, 'home') - (CFG.safeStart + DESTS[0].safeBonus)) < 1e-12);
   }
   {
+    // 行き先で無事の幅がちがう（家が一番安全寄り）
+    check('家は山・海より「無事」が太い', safeFrac(1, 'home') > safeFrac(1, 'mountain') && safeFrac(1, 'home') > safeFrac(1, 'sea'));
+  }
+  for (const dst of DESTS) {
     // 死に方のマス幅は weight の比。まれな物も細すぎない（最小マスが死のマス全体の 5% 以上）
-    const ws = buildWheel(1), dws = ws.slice(1);
+    const ws = buildWheel(1, dst.id), dws = ws.slice(1);
     const tot = dws.reduce((s, w) => s + (w.a1 - w.a0), 0);
     const mn = Math.min(...dws.map(w => (w.a1 - w.a0) / tot));
-    check('一番細い死のマスでも死のマス全体の 5% 以上', mn > 0.05, (mn * 100).toFixed(1) + '%');
+    check(dst.name + '：一番細い死のマスでも死のマス全体の 5% 以上', mn > 0.05, (mn * 100).toFixed(1) + '%');
+    // 行き先ちがいの死に方が混ざらない（any は全部の行き先に入る）
+    const bad = dws.filter(w => DEATHS[w.idx].dest !== dst.id && DEATHS[w.idx].dest !== 'any').length;
+    check(dst.name + '：その行き先の死に方だけが並ぶ', bad === 0 && dws.length >= 2, dws.length + ' 種');
+  }
+  {
+    // どの死に方も、どこかの行き先には並ぶ
+    const all = new Set();
+    DESTS.forEach(d => destDeaths(d.id).forEach(i => all.add(i)));
+    check('全部の死に方がどこかの行き先に出る', all.size === DEATHS.length, all.size + ' / ' + DEATHS.length);
+    // データに出典・数字・防ぐには がそろっている
+    const miss = DEATHS.filter(d => !(d.n > 0 && d.stat && d.note && d.prevent && d.name && d.near)).map(d => d.id);
+    check('死に方のデータに数字・出どころ・防ぐには・名前がそろっている', miss.length === 0, miss.join(','));
   }
 
   // --- 止まる位置 ---
@@ -276,10 +345,10 @@ const Game = {
     const exp = 1 - safeFrac(1), got = death / N;
     check('1日目の死亡率が円盤の幅どおり', Math.abs(got - exp) < 0.006, '期待 ' + (exp * 100).toFixed(1) + '% / 実測 ' + (got * 100).toFixed(1) + '%');
   }
-  {
-    let sum = 0, N = 6000, longest = 0;
+  for (const dst of DESTS) {
+    let sum = 0, N = 4000, longest = 0;
     for (let i = 0; i < N; i++) {
-      Game.reset(50000 + i);
+      Game.reset(50000 + i); Game.dest = dst.id; Game.wedges = buildWheel(1, dst.id);
       let guard = 0;
       while (guard++ < 200) {
         spinToEnd(0.5);
@@ -289,17 +358,17 @@ const Game = {
       sum += Game.day; longest = Math.max(longest, Game.day);
     }
     const mean = sum / N;
-    check('平均 3〜4.5 日で死ぬ（飽きないよう短め）', mean >= 3 && mean <= 4.5, '平均 ' + mean.toFixed(2) + ' 日目 / 最長 ' + longest + ' 日目');
+    check(dst.name + 'に行き続けると平均 3〜4.5 日で死ぬ（飽きないよう短め）', mean >= 3 && mean <= 4.5, '平均 ' + mean.toFixed(2) + ' 日目 / 最長 ' + longest + ' 日目');
   }
-  {
-    // 深い日なら、どの死に方も出る
-    const seen = new Set();
+  for (const dst of DESTS) {
+    // 深い日なら、その行き先の死に方は全部出る
+    const want = destDeaths(dst.id), seen = new Set();
     for (let i = 0; i < 20000; i++) {
-      Game.reset(900000 + i); Game.day = 10; Game.wedges = buildWheel(10);
+      Game.reset(900000 + i); Game.day = 10; Game.dest = dst.id; Game.wedges = buildWheel(10, dst.id);
       spinToEnd(0.5);
       if (Game.phase === 'dead') seen.add(Game.deathIdx);
     }
-    check('10日目なら全部の死に方が出る', seen.size === DEATHS.length, seen.size + ' / ' + DEATHS.length);
+    check('10日目の' + dst.name + 'なら その行き先の死に方が全部出る', want.every(i => seen.has(i)) && seen.size === want.length, seen.size + ' / ' + want.length);
   }
 
   // --- ニアミス ---

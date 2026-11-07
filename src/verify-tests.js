@@ -28,14 +28,30 @@
   {
     let dec = true, prev = 2;
     for (let d = 1; d <= 40; d++) { const s = safeFrac(d); if (s > prev + 1e-12) dec = false; prev = s; }
-    check('「無事」は日がたつほど細くなる（下限あり）', dec && safeFrac(40) >= CFG.safeMin - 1e-12 && safeFrac(1) === CFG.safeStart);
+    check('「無事」は日がたつほど細くなる（下限あり）', dec && safeFrac(40) >= CFG.safeMin - 1e-12 && Math.abs(safeFrac(1, 'home') - (CFG.safeStart + DESTS[0].safeBonus)) < 1e-12);
   }
   {
+    // 行き先で無事の幅がちがう（家が一番安全寄り）
+    check('家は山・海より「無事」が太い', safeFrac(1, 'home') > safeFrac(1, 'mountain') && safeFrac(1, 'home') > safeFrac(1, 'sea'));
+  }
+  for (const dst of DESTS) {
     // 死に方のマス幅は weight の比。まれな物も細すぎない（最小マスが死のマス全体の 5% 以上）
-    const ws = buildWheel(1), dws = ws.slice(1);
+    const ws = buildWheel(1, dst.id), dws = ws.slice(1);
     const tot = dws.reduce((s, w) => s + (w.a1 - w.a0), 0);
     const mn = Math.min(...dws.map(w => (w.a1 - w.a0) / tot));
-    check('一番細い死のマスでも死のマス全体の 5% 以上', mn > 0.05, (mn * 100).toFixed(1) + '%');
+    check(dst.name + '：一番細い死のマスでも死のマス全体の 5% 以上', mn > 0.05, (mn * 100).toFixed(1) + '%');
+    // 行き先ちがいの死に方が混ざらない（any は全部の行き先に入る）
+    const bad = dws.filter(w => DEATHS[w.idx].dest !== dst.id && DEATHS[w.idx].dest !== 'any').length;
+    check(dst.name + '：その行き先の死に方だけが並ぶ', bad === 0 && dws.length >= 2, dws.length + ' 種');
+  }
+  {
+    // どの死に方も、どこかの行き先には並ぶ
+    const all = new Set();
+    DESTS.forEach(d => destDeaths(d.id).forEach(i => all.add(i)));
+    check('全部の死に方がどこかの行き先に出る', all.size === DEATHS.length, all.size + ' / ' + DEATHS.length);
+    // データに出典・数字・防ぐには がそろっている
+    const miss = DEATHS.filter(d => !(d.n > 0 && d.stat && d.note && d.prevent && d.name && d.near)).map(d => d.id);
+    check('死に方のデータに数字・出どころ・防ぐには・名前がそろっている', miss.length === 0, miss.join(','));
   }
 
   // --- 止まる位置 ---
@@ -82,10 +98,10 @@
     const exp = 1 - safeFrac(1), got = death / N;
     check('1日目の死亡率が円盤の幅どおり', Math.abs(got - exp) < 0.006, '期待 ' + (exp * 100).toFixed(1) + '% / 実測 ' + (got * 100).toFixed(1) + '%');
   }
-  {
-    let sum = 0, N = 6000, longest = 0;
+  for (const dst of DESTS) {
+    let sum = 0, N = 4000, longest = 0;
     for (let i = 0; i < N; i++) {
-      Game.reset(50000 + i);
+      Game.reset(50000 + i); Game.dest = dst.id; Game.wedges = buildWheel(1, dst.id);
       let guard = 0;
       while (guard++ < 200) {
         spinToEnd(0.5);
@@ -95,17 +111,17 @@
       sum += Game.day; longest = Math.max(longest, Game.day);
     }
     const mean = sum / N;
-    check('平均 3〜4.5 日で死ぬ（飽きないよう短め）', mean >= 3 && mean <= 4.5, '平均 ' + mean.toFixed(2) + ' 日目 / 最長 ' + longest + ' 日目');
+    check(dst.name + 'に行き続けると平均 3〜4.5 日で死ぬ（飽きないよう短め）', mean >= 3 && mean <= 4.5, '平均 ' + mean.toFixed(2) + ' 日目 / 最長 ' + longest + ' 日目');
   }
-  {
-    // 深い日なら、どの死に方も出る
-    const seen = new Set();
+  for (const dst of DESTS) {
+    // 深い日なら、その行き先の死に方は全部出る
+    const want = destDeaths(dst.id), seen = new Set();
     for (let i = 0; i < 20000; i++) {
-      Game.reset(900000 + i); Game.day = 10; Game.wedges = buildWheel(10);
+      Game.reset(900000 + i); Game.day = 10; Game.dest = dst.id; Game.wedges = buildWheel(10, dst.id);
       spinToEnd(0.5);
       if (Game.phase === 'dead') seen.add(Game.deathIdx);
     }
-    check('10日目なら全部の死に方が出る', seen.size === DEATHS.length, seen.size + ' / ' + DEATHS.length);
+    check('10日目の' + dst.name + 'なら その行き先の死に方が全部出る', want.every(i => seen.has(i)) && seen.size === want.length, seen.size + ' / ' + want.length);
   }
 
   // --- ニアミス ---

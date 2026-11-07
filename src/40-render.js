@@ -121,7 +121,7 @@ function drawWheel() {
     ctx.font = 'bold 9px "Yu Gothic UI","Meiryo",sans-serif';
     ctx.fillText('無事', lx, ly - 2);
     ctx.font = 'bold 4.2px "Yu Gothic UI","Meiryo",sans-serif';
-    ctx.fillText(Math.round(safeFrac(Game.day) * 100) + '%', lx, ly + 5);
+    ctx.fillText(Math.round(safeFrac(Game.day, Game.dest) * 100) + '%', lx, ly + 5);
   }
   // ふちの電球
   const n = 28;

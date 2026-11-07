@@ -31,10 +31,13 @@ body{display:flex;align-items:center;justify-content:center}
 #msg.dead{color:#fff;background:#1a1a1a;border-radius:1.6cqw;padding:0 3cqw}
 
 .btn{border:0;font:inherit;font-weight:bold;cursor:pointer;touch-action:manipulation;pointer-events:auto}
-#go{position:absolute;top:148cqw;left:13cqw;right:13cqw;height:16cqw;font-size:7cqw;letter-spacing:.8cqw;
-  background:#ffcc00;color:#1a1a1a;border:1cqw solid #1a1a1a;border-radius:3.2cqw;box-shadow:0 1.4cqw 0 #1a1a1a}
-#go:active{transform:translateY(1cqw);box-shadow:0 .4cqw 0 #1a1a1a}
-#go.hide{visibility:hidden}
+/* 行き先ボタン（押す＝その日の円盤がまわる） */
+#dests{position:absolute;top:147cqw;left:6cqw;right:6cqw;height:18cqw;display:flex;gap:3.5cqw}
+#dests.hide{visibility:hidden}
+.dest{flex:1;font-size:10cqw;line-height:1;background:#ffcc00;color:#1a1a1a;border:1cqw solid #1a1a1a;border-radius:3.2cqw;
+  box-shadow:0 1.4cqw 0 #1a1a1a;padding:0}
+.dest:active{transform:translateY(1cqw);box-shadow:0 .4cqw 0 #1a1a1a}
+.dest.cur{background:#fff3b0}
 
 /* 死亡演出：全画面の映像（動画の上のキャンバスにピクトグラム。寄り・揺れは #cineInner をまとめて動かす） */
 #cine{position:absolute;inset:0;z-index:20;overflow:hidden;background:#000;display:none;pointer-events:auto}
@@ -47,17 +50,23 @@ body{display:flex;align-items:center;justify-content:center}
 #cineFlash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
 
 /* 死因カード：注意標識 */
-#result{position:absolute;left:8cqw;right:8cqw;top:60cqw;z-index:30;
+#result{position:absolute;left:7cqw;right:7cqw;top:50cqw;z-index:30;
   background:#ffcc00;border:1.4cqw solid #1a1a1a;border-radius:3cqw;overflow:hidden;
   box-shadow:0 2cqw 0 #1a1a1a;text-align:center;pointer-events:auto;
-  display:none;flex-direction:column;align-items:center;gap:2.4cqw;padding:0 5cqw 6cqw}
+  display:none;flex-direction:column;align-items:center;gap:2cqw;padding:0 5cqw 4cqw}
 #result.show{display:flex;animation:pop .3s cubic-bezier(.3,1.5,.5,1)}
 @keyframes pop{from{transform:scale(.7);opacity:0}to{transform:none;opacity:1}}
 #result .sign{align-self:stretch;margin:0 -5cqw;background:#1a1a1a;color:#ffcc00;font-size:7cqw;font-weight:bold;letter-spacing:2cqw;padding:2cqw 0 2cqw 2cqw}
-#rCause{font-size:6.6cqw;font-weight:bold;margin-top:2cqw;line-height:1.35}
-#rDays{font-size:5cqw;font-weight:bold}
-#rBest{font-size:3.8cqw;min-height:5cqw}
-#retry{width:100%;height:14cqw;font-size:5.8cqw;margin-top:1cqw;background:#1a1a1a;color:#ffcc00;border-radius:3cqw}
+#rCause{font-size:6.4cqw;font-weight:bold;margin-top:1.6cqw;line-height:1.35}
+#rDays{font-size:4.6cqw;font-weight:bold}
+#rStat{align-self:stretch;background:#1a1a1a;color:#ffcc00;border-radius:2cqw;padding:2cqw 3cqw;display:flex;flex-direction:column;gap:.8cqw}
+#rStat b{font-size:6.6cqw}
+#rStat span{font-size:3.1cqw;color:#fff;opacity:.9;line-height:1.4}
+#rPrev{font-size:3.7cqw;font-weight:bold;line-height:1.5}
+#rPrev i{font-style:normal;background:#1a1a1a;color:#ffcc00;border-radius:1cqw;padding:.3cqw 1.4cqw;margin-right:1.2cqw;font-size:3.2cqw}
+#rBest{font-size:3.4cqw;min-height:4cqw}
+#rGame{font-size:2.8cqw;opacity:.75}
+#retry{width:100%;height:13cqw;font-size:5.6cqw;margin-top:.5cqw;background:#1a1a1a;color:#ffcc00;border-radius:3cqw}
 #retry:active{transform:translateY(.8cqw)}
 </style>
 </head>
@@ -67,7 +76,11 @@ body{display:flex;align-items:center;justify-content:center}
   <div id="stripeT" class="hz"></div>
   <div id="hdr"><span id="dayNo">1日目</span><span id="best"></span></div>
   <div id="msg"></div>
-  <button id="go" class="btn">まわす</button>
+  <div id="dests">
+    <button class="btn dest" data-d="home">家</button>
+    <button class="btn dest" data-d="mountain">山</button>
+    <button class="btn dest" data-d="sea">海</button>
+  </div>
   <div id="cine">
     <div id="cineInner"><canvas id="cv2"></canvas></div>
     <div id="cineFlash"></div>
@@ -76,8 +89,11 @@ body{display:flex;align-items:center;justify-content:center}
     <div class="sign">死亡</div>
     <div id="rCause"></div>
     <div id="rDays"></div>
+    <div id="rStat"><b id="rStatN"></b><span id="rStatNote"></span></div>
+    <div id="rPrev"></div>
     <div id="rBest"></div>
     <button id="retry" class="btn">もう一度</button>
+    <div id="rGame">※ ゲームでは 死ぬ頻度を 大げさに しています</div>
   </div>
   <div id="stripeB" class="hz"></div>
 </div>
