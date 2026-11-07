@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><title>死亡シミュレーター 検証</title>
+<style>body{font:16px sans-serif;padding:16px}.ok{color:#080}.ng{color:#c00;font-weight:bold}pre{background:#f4f4f4;padding:8px}</style>
+</head><body><h1>死亡シミュレーター 検証</h1><div id="out"></div>
+<script>
+// ===== 調整用の数値（ここだけ触れば遊びが変わる）=====
+// 世界の大きさは 幅100 × 高さ177.8（縦9:16）。長さの単位はすべてこの世界の単位
+const CFG = {
+  worldW: 100,
+  worldH: 100 * 16 / 9,
+  shareUrl: 'https://fish-suika.github.io/death-simulator/',
+
+  // 「無事」の幅（円盤全体に対する割合）。1日目が一番太く、毎日細くなる。平均 6〜8 日で死ぬ目安
+  safeStart: 0.92,
+  safeStep: 0.015,
+  safeMin: 0.2,
+
+  // 円盤
+  wheel: { cx: 50, cy: 104, R: 35 },
+  spinSecs: 4.6,        // 回り始めから止まるまで
+  easePow: 3.2,         // 大きいほど最後がじわじわ遅くなる（ドキドキの主な調整）
+  turnsMin: 3,          // 最低でも何周するか（3〜4周）
+  edgeMargin: 0.004,    // 止まる位置を境目からこれ(rad)以上離す（境目での判定ぶれを防ぐ）
+
+  // 演出
+  nearDeg: 6,           // 死のマスからこの角度以内で止まったら「ニアミス」
+  closeDeg: 22,         // この角度以内なら「あぶなかった」
+  deathCardDelay: 1.5,  // 死んでから死因カードが出るまで(秒)
+  needleKick: 0.55,     // 針が境目で弾かれる大きさ(rad)
+};
+
+// 死に方（Phase 1 は仮。数字 n は仮の年間死者数。Phase 2 で実データに入れ替える）
+// weight = 1 + log10(n)：死者数の比を対数で縮めて、まれな物も細すぎないようにする
+const DEATHS = [
+  { id: 'mochi',    name: 'もちを のどに つまらせる', n: 1500, near: 'もちが のどの おくを かすめた' },
+  { id: 'riganryu', name: '離岸流に ながされる',       n: 300,  near: 'あしが ふっと うきそうになった' },
+  { id: 'hachi',    name: 'ハチに さされる',           n: 20,   near: 'ハチが みみもとを とおりすぎた' },
+  { id: 'rakuseki', name: '落石に あたる',             n: 5,    near: 'ちいさな いしが ころがってきた' },
+  { id: 'kinoko',   name: '毒キノコを たべる',         n: 4,    near: 'あやしい キノコと めが あった' },
+  { id: 'rakurai',  name: '落雷に うたれる',           n: 3,    near: 'とおくで ゴロゴロと なった' },
+];
+DEATHS.forEach(d => { d.weight = 1 + Math.log10(d.n); });
+
+// 無事の日の一言
+const SAFE_LINES = ['ふつうの 一日だった', 'なにも 起きなかった', 'ぶじに 夜をむかえた', 'いい 天気だった', 'ごはんが おいしかった'];
+const CLOSE_LINES = ['あぶなかった…', 'いま なにか すれちがった', '心臓が ドキッとした'];
+// ===== ゲームの中身（画面を使わない。verify.html でもそのまま動く）=====
+const TAU = Math.PI * 2;
+const mod = (a, m) => ((a % m) + m) % m;
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+// その日の「無事」の幅（円盤の何割か）
+function safeFrac(day) {
+  return Math.max(CFG.safeMin, CFG.safeStart - CFG.safeStep * (day - 1));
+}
+
+// その日の円盤。円盤の上の角度 a(0〜TAU) で、[0, 無事) のあとに死に方のマスが並ぶ
+function buildWheel(day) {
+  const p = safeFrac(day);
+  const wedges = [{ kind: 'safe', a0: 0, a1: TAU * p }];
+  const total = DEATHS.reduce((s, d) => s + d.weight, 0);
+  let a = TAU * p;
+  DEATHS.forEach((d, i) => {
+    const w = TAU * (1 - p) * d.weight / total;
+    wedges.push({ kind: 'death', idx: i, a0: a, a1: a + w });
+    a += w;
+  });
+  wedges[wedges.length - 1].a1 = TAU;
+  return wedges;
+}
+
+function wedgeIndexAt(wedges, a) {
+  a = mod(a, TAU);
+  for (let i = 0; i < wedges.length; i++) if (a >= wedges[i].a0 && a < wedges[i].a1) return i;
+  return wedges.length - 1;
+}
+
+// 円盤が rot だけ回っているとき、上の針の下にある円盤上の角度
+const pointerLocal = rot => mod(-Math.PI / 2 - rot, TAU);
+
+// 止まる位置を決める（境目から離す）
+function pickStopAngle(rng) {
+  let a = rng() * TAU;
+  const m = CFG.edgeMargin;
+  if (a < m) a = m;
+  if (TAU - a < m) a = TAU - m;
+  return a;
+}
+function nudgeFromEdges(wedges, a) {
+  const m = CFG.edgeMargin;
+  for (const w of wedges) {
+    const d = a - w.a0;
+    if (w.a0 > 0 && Math.abs(d) < m) a = w.a0 + (d < 0 ? -m : m);
+  }
+  return a;
+}
+
+// 無事で止まったときの、死のマス(= TAU*p 以降)までの近さ[度]と、近い側の死に方
+function nearestDeath(wedges, a) {
+  const edge = wedges[0].a1;                 // 無事の終わり = 最初の死のマスの始まり
+  const toFirst = edge - a, toLast = a;      // 最初の死のマスまで / 最後の死のマス(=TAUの手前)まで
+  if (toFirst <= toLast) return { deg: toFirst * 180 / Math.PI, idx: wedges[1].idx };
+  return { deg: toLast * 180 / Math.PI, idx: wedges[wedges.length - 1].idx };
+}
+
+const Game = {
+  reset(seed) {
+    this.rng = mulberry32(seed == null ? (Math.random() * 2147483647) | 0 : seed);
+    this.day = 1;
+    this.phase = 'ready';      // ready → spin → safe → (next) ready … / spin → dead
+    this.rot = 0;
+    this.wedges = buildWheel(1);
+    this.plan = null;
+    this.stopA = 0;
+    this.deathIdx = -1;
+    this.near = null;          // 無事で止まったときのニアミス情報
+    this.tPhase = 0;
+    this.spinT = 0;
+  },
+
+  // 回す。結果は先に乱数で決め、そこへ止まるように減速の曲線を逆算する
+  spin() {
+    if (this.phase !== 'ready') return false;
+    let a = pickStopAngle(this.rng);
+    a = nudgeFromEdges(this.wedges, a);
+    const target = this.wedges[wedgeIndexAt(this.wedges, a)];
+    const phi0 = pointerLocal(this.rot);
+    const turns = CFG.turnsMin + Math.floor(this.rng() * 2);
+    const delta = mod(phi0 - a, TAU) + TAU * turns;      // 回転は時計回り(rot が増える)＝針の下の角度は減っていく
+    this.plan = { rot0: this.rot, delta, a, target };
+    this.stopA = a;
+    this.spinT = 0;
+    this.phase = 'spin';
+    this.tPhase = 0;
+    return true;
+  },
+
+  step(dt) {
+    this.tPhase += dt;
+    if (this.phase !== 'spin') return;
+    this.spinT += dt;
+    const u = Math.min(1, this.spinT / CFG.spinSecs);
+    this.rot = this.plan.rot0 + this.plan.delta * (1 - Math.pow(1 - u, CFG.easePow));
+    if (u >= 1) this.finishSpin();
+  },
+
+  finishSpin() {
+    this.rot = this.plan.rot0 + this.plan.delta;
+    const w = this.plan.target;
+    this.tPhase = 0;
+    if (w.kind === 'safe') {
+      this.near = nearestDeath(this.wedges, this.plan.a);
+      this.phase = 'safe';
+    } else {
+      this.deathIdx = w.idx;
+      this.phase = 'dead';
+    }
+  },
+
+  // 無事の翌日へ
+  next() {
+    if (this.phase !== 'safe') return false;
+    this.day++;
+    this.wedges = buildWheel(this.day);
+    this.plan = null;
+    this.near = null;
+    this.phase = 'ready';
+    this.tPhase = 0;
+    return true;
+  },
+
+  // いま針の下にあるマスの番号
+  wedgeUnderPointer() {
+    return wedgeIndexAt(this.wedges, pointerLocal(this.rot));
+  },
+};
+// ===== 自動テスト =====
+(function () {
+  const out = document.getElementById('out');
+  let fail = 0;
+  function check(name, cond, note) {
+    if (!cond) fail++;
+    const p = document.createElement('div');
+    p.className = cond ? 'ok' : 'ng';
+    p.textContent = (cond ? 'OK  ' : 'NG  ') + name + (note ? '  [' + note + ']' : '');
+    out.appendChild(p);
+  }
+
+  // 1 回まわして結果まで進める
+  function spinToEnd(dt) {
+    Game.spin();
+    let n = 0;
+    while (Game.phase === 'spin' && n++ < 100000) Game.step(dt);
+  }
+
+  // --- 円盤の作り ---
+  for (const day of [1, 5, 12]) {
+    const ws = buildWheel(day);
+    let ok = Math.abs(ws[0].a0) < 1e-9 && Math.abs(ws[ws.length - 1].a1 - TAU) < 1e-9;
+    for (let i = 1; i < ws.length; i++) if (Math.abs(ws[i].a0 - ws[i - 1].a1) > 1e-9) ok = false;
+    check(day + '日目：マスが隙間なく円盤を一周する', ok);
+    check(day + '日目：無事の幅が safeFrac と一致', Math.abs((ws[0].a1 - ws[0].a0) / TAU - safeFrac(day)) < 1e-9);
+  }
+  {
+    let dec = true, prev = 2;
+    for (let d = 1; d <= 40; d++) { const s = safeFrac(d); if (s > prev + 1e-12) dec = false; prev = s; }
+    check('「無事」は日がたつほど細くなる（下限あり）', dec && safeFrac(40) >= CFG.safeMin - 1e-12 && safeFrac(1) === CFG.safeStart);
+  }
+  {
+    // 死に方のマス幅は weight の比。まれな物も細すぎない（最小マスが死のマス全体の 5% 以上）
+    const ws = buildWheel(1), dws = ws.slice(1);
+    const tot = dws.reduce((s, w) => s + (w.a1 - w.a0), 0);
+    const mn = Math.min(...dws.map(w => (w.a1 - w.a0) / tot));
+    check('一番細い死のマスでも死のマス全体の 5% 以上', mn > 0.05, (mn * 100).toFixed(1) + '%');
+  }
+
+  // --- 止まる位置 ---
+  {
+    let miss = 0, edge = 0, spins = 0;
+    for (let seed = 1; seed <= 3000; seed++) {
+      Game.reset(seed);
+      Game.day = 1 + (seed % 12); Game.wedges = buildWheel(Game.day);
+      Game.spin();
+      const target = Game.wedges.indexOf(Game.plan.target);
+      const deltaOK = Game.plan.delta >= TAU * CFG.turnsMin;
+      spinToEnd(1 / 60);
+      spins++;
+      if (Game.wedgeUnderPointer() !== target || !deltaOK) miss++;
+      // 境目から離れているか
+      const phi = pointerLocal(Game.rot);
+      for (const w of Game.wedges) {
+        const d = Math.min(Math.abs(phi - w.a0), Math.abs(phi - w.a1), Math.abs(phi - w.a0 - TAU), Math.abs(phi - w.a1 + TAU));
+        if (w.a0 > 0 && d < CFG.edgeMargin * 0.9) edge++;
+      }
+      if (Math.min(phi, TAU - phi) < CFG.edgeMargin * 0.9) edge++;
+    }
+    check('決めた結果のマスにちゃんと止まる（3000回）', miss === 0, 'ずれ ' + miss);
+    check('境目すれすれには止まらない', edge === 0, edge + ' 件');
+  }
+  {
+    // 刻み幅がちがっても同じ結果
+    let diff = 0;
+    for (let seed = 1; seed <= 200; seed++) {
+      Game.reset(seed); spinToEnd(1 / 30); const a = Game.phase + ':' + Game.deathIdx + ':' + Game.rot.toFixed(6);
+      Game.reset(seed); spinToEnd(1 / 144); const b = Game.phase + ':' + Game.deathIdx + ':' + Game.rot.toFixed(6);
+      if (a !== b) diff++;
+    }
+    check('フレームレートがちがっても結果が同じ', diff === 0, 'ちがい ' + diff);
+  }
+
+  // --- 確率と平均の生存日数 ---
+  {
+    let death = 0, N = 30000;
+    for (let i = 0; i < N; i++) {
+      Game.reset(1000 + i); spinToEnd(0.5);
+      if (Game.phase === 'dead') death++;
+    }
+    const exp = 1 - safeFrac(1), got = death / N;
+    check('1日目の死亡率が円盤の幅どおり', Math.abs(got - exp) < 0.006, '期待 ' + (exp * 100).toFixed(1) + '% / 実測 ' + (got * 100).toFixed(1) + '%');
+  }
+  {
+    let sum = 0, N = 6000, longest = 0;
+    for (let i = 0; i < N; i++) {
+      Game.reset(50000 + i);
+      let guard = 0;
+      while (guard++ < 200) {
+        spinToEnd(0.5);
+        if (Game.phase === 'dead') break;
+        Game.next();
+      }
+      sum += Game.day; longest = Math.max(longest, Game.day);
+    }
+    const mean = sum / N;
+    check('平均 6〜8 日で死ぬ', mean >= 6 && mean <= 8, '平均 ' + mean.toFixed(2) + ' 日目 / 最長 ' + longest + ' 日目');
+  }
+  {
+    // 深い日なら、どの死に方も出る
+    const seen = new Set();
+    for (let i = 0; i < 20000; i++) {
+      Game.reset(900000 + i); Game.day = 10; Game.wedges = buildWheel(10);
+      spinToEnd(0.5);
+      if (Game.phase === 'dead') seen.add(Game.deathIdx);
+    }
+    check('10日目なら全部の死に方が出る', seen.size === DEATHS.length, seen.size + ' / ' + DEATHS.length);
+  }
+
+  // --- ニアミス ---
+  {
+    const ws = buildWheel(1);
+    const a = nearestDeath(ws, ws[0].a1 - 0.05);
+    const b = nearestDeath(ws, 0.05);
+    check('無事の端に止まると近い側の死に方を返す', a.idx === ws[1].idx && b.idx === ws[ws.length - 1].idx && a.deg > 0 && a.deg < 4 && b.deg > 0 && b.deg < 4);
+  }
+  {
+    // 無事で止まるたびに phase=safe、next で翌日の円盤になる
+    Game.reset(7);
+    let moved = false;
+    for (let g = 0; g < 50; g++) {
+      spinToEnd(0.5);
+      if (Game.phase === 'safe') { const d0 = Game.day; Game.next(); moved = Game.day === d0 + 1 && Game.phase === 'ready'; break; }
+      break;
+    }
+    check('無事のあと next で翌日・ready に戻る（または初回で死亡）', moved || Game.phase === 'dead');
+  }
+
+  const s = document.createElement('h2');
+  s.textContent = fail === 0 ? '全部OK' : fail + ' 件NG';
+  s.className = fail === 0 ? 'ok' : 'ng';
+  out.appendChild(s);
+  document.title = fail === 0 ? 'ALL OK' : 'FAIL ' + fail;
+})();
+</script>
+</body>
+</html>

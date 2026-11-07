@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>死亡シミュレーター</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:#2a2a2a;
+  font-family:"Hiragino Maru Gothic ProN","Yu Gothic UI","Meiryo",sans-serif;color:#1a1a1a;
+  user-select:none;-webkit-user-select:none;touch-action:none;
+  word-break:auto-phrase;line-break:strict;text-wrap:balance}
+body{display:flex;align-items:center;justify-content:center}
+.nb{display:inline-block;white-space:nowrap}
+
+/* 絵は画面いっぱい。遊ぶ場所は縦9:16で中央 */
+#cv{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+/* 遊ぶ場所の枠。単位は cqw（枠の幅の1%）。文字の置き場所に使う */
+#stage{position:relative;container-type:size;
+  width:min(100vw,calc(100dvh*9/16));aspect-ratio:9/16;pointer-events:none}
+.hz{background:repeating-linear-gradient(-45deg,#ffcc00 0 3cqw,#1a1a1a 3cqw 6cqw)}
+
+#stripeT,#stripeB{position:absolute;left:0;right:0;height:3cqw}
+#stripeT{top:0}#stripeB{bottom:0}
+#hdr{position:absolute;top:5.5cqw;left:5cqw;right:5cqw;height:11cqw;background:#1a1a1a;color:#ffcc00;
+  border-radius:1.8cqw;display:flex;align-items:center;justify-content:space-between;padding:0 4cqw}
+#dayNo{font-size:7.4cqw;font-weight:bold;letter-spacing:.3cqw}
+#best{font-size:3.6cqw;opacity:.9}
+#msg{position:absolute;top:49cqw;left:6cqw;right:6cqw;height:11cqw;display:flex;align-items:center;justify-content:center;
+  text-align:center;font-size:4.6cqw;font-weight:bold}
+#msg.dead{color:#fff;background:#1a1a1a;border-radius:1.6cqw;padding:0 3cqw}
+
+.btn{border:0;font:inherit;font-weight:bold;cursor:pointer;touch-action:manipulation;pointer-events:auto}
+#go{position:absolute;top:148cqw;left:13cqw;right:13cqw;height:16cqw;font-size:7cqw;letter-spacing:.8cqw;
+  background:#ffcc00;color:#1a1a1a;border:1cqw solid #1a1a1a;border-radius:3.2cqw;box-shadow:0 1.4cqw 0 #1a1a1a}
+#go:active{transform:translateY(1cqw);box-shadow:0 .4cqw 0 #1a1a1a}
+#go.hide{visibility:hidden}
+
+/* 死因カード：注意標識 */
+#result{position:absolute;left:8cqw;right:8cqw;top:60cqw;z-index:30;
+  background:#ffcc00;border:1.4cqw solid #1a1a1a;border-radius:3cqw;overflow:hidden;
+  box-shadow:0 2cqw 0 #1a1a1a;text-align:center;pointer-events:auto;
+  display:none;flex-direction:column;align-items:center;gap:2.4cqw;padding:0 5cqw 6cqw}
+#result.show{display:flex;animation:pop .3s cubic-bezier(.3,1.5,.5,1)}
+@keyframes pop{from{transform:scale(.7);opacity:0}to{transform:none;opacity:1}}
+#result .sign{align-self:stretch;margin:0 -5cqw;background:#1a1a1a;color:#ffcc00;font-size:7cqw;font-weight:bold;letter-spacing:2cqw;padding:2cqw 0 2cqw 2cqw}
+#rCause{font-size:6.6cqw;font-weight:bold;margin-top:2cqw;line-height:1.35}
+#rDays{font-size:5cqw;font-weight:bold}
+#rBest{font-size:3.8cqw;min-height:5cqw}
+#retry{width:100%;height:14cqw;font-size:5.8cqw;margin-top:1cqw;background:#1a1a1a;color:#ffcc00;border-radius:3cqw}
+#retry:active{transform:translateY(.8cqw)}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="stage">
+  <div id="stripeT" class="hz"></div>
+  <div id="hdr"><span id="dayNo">1日目</span><span id="best"></span></div>
+  <div id="msg"></div>
+  <button id="go" class="btn">まわす</button>
+  <div id="result">
+    <div class="sign">死亡</div>
+    <div id="rCause"></div>
+    <div id="rDays"></div>
+    <div id="rBest"></div>
+    <button id="retry" class="btn">もう一度</button>
+  </div>
+  <div id="stripeB" class="hz"></div>
+</div>
+<script>
