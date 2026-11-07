@@ -290,7 +290,7 @@ const dexRegular = () => DEATHS.filter(d => !d.hidden).length;                  
 // まれな死に方ほど出ないので、そのままだと図鑑の最後が埋まらなくなるのを防ぐ（設定資料 5.10）
 function wheelWeight(i) {
   const d = DEATHS[i];
-  if (d.hidden || DEX_HAS(d.id)) return d.weight;
+  if (DEX_HAS(d.id)) return d.weight;      // 隠し枠（隕石）も、出られるようになったあとはまだ載っていなければ最大まで太くなる（約 15%）
   const got = dexRegular() - dexOpen();
   return d.weight * (1 + CFG.boostMax * Math.max(0, Math.min(1, (got - CFG.boostFrom) / (dexRegular() - 1 - CFG.boostFrom))));
 }

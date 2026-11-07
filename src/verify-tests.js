@@ -40,6 +40,14 @@
     DEX_HAS = () => false; HIDDEN_ON = false;
   }
   {
+    // 12 種そろって隕石がまだ載っていないとき：隕石は最大まで太くなり、約 15% で出る
+    DEX_HAS = id => !DEATHS.find(d => d.id === id).hidden; HIDDEN_ON = true;
+    const hid = DEATHS.findIndex(d => d.hidden), rng = mulberry32(4242), N = 60000; let c = 0;
+    for (let i = 0; i < N; i++) if (pickDeath(rng) === hid) c++;
+    DEX_HAS = () => false; HIDDEN_ON = false;
+    check('隕石は、まだ載っていないとき約 15% で出る（平均 約 7 回で見られる）', c / N > 0.13 && c / N < 0.17, (c / N * 100).toFixed(1) + '%');
+  }
+  {
     // 図鑑の空きが少ないと、まだ載っていない死に方が出やすくなる（最大 1+boostMax 倍）。載っている物は変わらない
     const ids = reg.map(i => DEATHS[i].id);
     DEX_HAS = () => false; const none = wheelWeight(reg[0]) === DEATHS[reg[0]].weight;
