@@ -1133,7 +1133,7 @@ function showCard() {
   }
   const bn = $('rBanner');
   if (r.complete) { bn.textContent = '図鑑コンプリート！'; bn.style.display = 'block'; }
-  else if (r.unlocked) { bn.textContent = '12種 そろった！ 空に 光が…'; bn.style.display = 'block'; }
+  else if (r.unlocked) { bn.textContent = 'あと 1枚！ 空に 光が…'; bn.style.display = 'block'; }
   else bn.style.display = 'none';
   $('rGame').style.display = (r.complete || r.unlocked) ? 'none' : '';   // カードが長くなるので断り書きは省く（図鑑の下には常にある）
   if (r.complete || r.unlocked) { Snd.grand(); confetti(r.complete ? 170 : 100, true); }
